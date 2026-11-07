@@ -1,0 +1,21 @@
+# 文本统一用 LF 存储，检出时按平台转换
+* text=auto
+
+# Windows 专用脚本保持 CRLF
+*.ps1 text eol=crlf
+*.vbs text eol=crlf
+*.bat text eol=crlf
+
+# 调色文件按原样保存，不做换行转换
+*.cube -text
+
+# 二进制
+*.ico binary
+*.webp binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.onnx binary
+*.dll binary
+*.exe binary
+*.zip binary
