@@ -1,0 +1,28 @@
+Axe 成片效果素材的来源与许可
+========================================
+
+滤镜（effects\滤镜，.cube 3D LUT，名称为 Axe 所起）
+  01_鲜艳 02_阳光 03_清新 04_奶油 05_冷调 06_暖调
+    来源：Derby film looks（ZESTY、SUNSHINE、BLUSH、DREAMY、CHILLY、TOASTY）
+    https://github.com/joinfiber/derby-film   许可：MIT
+  07_暖阳
+    来源：Lightframes free presets pack（golden-hour-glow）
+    https://github.com/joancomadran/lightframes   许可：MIT
+  08_胶片
+    来源：slay LUTs（slay-04-film）
+    https://github.com/slaycamera/luts   许可：CC BY 4.0（https://creativecommons.org/licenses/by/4.0/）
+  09_人像 10_清透 11_复古 12_浓郁（强度调为 80%）
+    来源：GlassMeter film looks（kodak-portra-400、kodak-ektachrome-e100、kodak-gold-200、kodak-ektar-100）
+    https://github.com/TrondW/glassmeter-film-looks   许可：CC BY 4.0（https://creativecommons.org/licenses/by/4.0/）
+
+贴纸（effects\贴纸，动态 WebP）
+  20_火爆 至 35_好吃：Microsoft Fluent Emoji Animated 的动态表情，缩放后转成 WebP
+    https://github.com/microsoft/fluentui-emoji-animated   许可：MIT，Copyright (c) Microsoft Corporation
+  40_购物车 至 51_优惠券：Microsoft Fluent Emoji 的 3D 表情，加了简单的动画
+    https://github.com/microsoft/fluentui-emoji   许可：MIT，Copyright (c) Microsoft Corporation
+  01_限时特惠 至 13_库存告急：Axe 绘制的促销文字贴纸，文字字体为得意黑（Smiley Sans）
+    https://github.com/atelier-anchor/smiley-sans   许可：SIL Open Font License 1.1
+
+自己添加
+  滤镜：把 .cube 文件放进 effects\滤镜；贴纸：把 .webp / .gif / .png 放进 effects\贴纸。
+  文件名就是列表里显示的名字，开头的「01_」这类编号只决定排列顺序。
