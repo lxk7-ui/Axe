@@ -1,0 +1,28 @@
+# 构建产物
+bin/
+
+# 打包输出（package.ps1 生成的文件夹和压缩包；发布包放在 GitHub Releases）
+Axe_v*/
+*.zip
+
+# 第三方运行库和模型，不入库（获取方法见 vendor/asr/README.md）
+vendor/asr/*.dll
+vendor/asr/model/
+
+# 程序运行时在自己文件夹里生成的文件
+settings.json
+app.log*
+_cache_*/
+_history/
+_asr/
+_preview/
+_videoinfo.tsv
+
+# 编辑器 / 系统
+.vs/
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
+.DS_Store
