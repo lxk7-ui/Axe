@@ -58,6 +58,34 @@ namespace VideoMixApp
             // v2.4 and earlier, which are read again once).
             public long VideoBytes = -1;
             public double VideoSeconds;
+            // The bitrate floor (kbps) 规格统一 last raised this clip for (v2.7.0, "AxeRate/1 1100" in the
+            // MP4 description), 0 = never raised; RateKnown is false for facts kept by v2.6 and earlier,
+            // which are read again once.
+            public int RateTag;
+            public bool RateKnown;
+        }
+
+        public const string RatePrefix = "AxeRate/1 ";
+
+        // Video bitrate in kbps (0 = unknown).
+        public static double Kbps(Facts x)
+        {
+            return x.VideoBytes > 0 && x.VideoSeconds > 0 ? x.VideoBytes * 8.0 / x.VideoSeconds / 1000.0 : 0;
+        }
+
+        // A clip below the bitrate floor that was not raised for this floor yet (see MixEngine.RaiseFloor).
+        public static bool LowRate(Facts x, int floorKbps)
+        {
+            if (floorKbps <= 0) return false;
+            double k = Kbps(x);
+            return k > 0 && k < floorKbps && x.RateTag < floorKbps;
+        }
+
+        internal static int ParseRate(string description)
+        {
+            int n;
+            if (string.IsNullOrEmpty(description) || !description.StartsWith(RatePrefix, StringComparison.Ordinal)) return 0;
+            return int.TryParse(description.Substring(RatePrefix.Length).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out n) ? n : 0;
         }
 
         private static readonly ConcurrentDictionary<string, Facts> Cache = new ConcurrentDictionary<string, Facts>(StringComparer.OrdinalIgnoreCase);
@@ -93,6 +121,13 @@ namespace VideoMixApp
                         x.VideoBytes = vb;
                         x.VideoSeconds = vs;
                     }
+                    // And one since v2.7 (older versions read the first eight).
+                    int rate;
+                    if (c.Length >= 9 && int.TryParse(c[8], NumberStyles.Integer, inv, out rate))
+                    {
+                        x.RateTag = rate;
+                        x.RateKnown = true;
+                    }
                     Cache.TryAdd(c[0], x);
                 }
             }
@@ -118,7 +153,8 @@ namespace VideoMixApp
                         int flags = (x.Readable ? 1 : 0) | (x.Video ? 2 : 0) | (x.Audio ? 4 : 0);
                         sb.Append(kv.Key).Append('\t').Append(x.Size.ToString(inv)).Append('\t').Append(x.Ticks.ToString(inv)).Append('\t')
                           .Append(flags.ToString(inv)).Append('\t').Append(x.Duration.ToString("R", inv)).Append('\t').Append(x.Mark ?? "").Append('\t')
-                          .Append(x.VideoBytes.ToString(inv)).Append('\t').Append(x.VideoSeconds.ToString("R", inv)).Append('\n');
+                          .Append(x.VideoBytes.ToString(inv)).Append('\t').Append(x.VideoSeconds.ToString("R", inv)).Append('\t')
+                          .Append(x.RateTag.ToString(inv)).Append('\n');
                     }
                     string tmp = _store + ".tmp";
                     File.WriteAllText(tmp, sb.ToString(), new UTF8Encoding(false));
@@ -147,8 +183,8 @@ namespace VideoMixApp
                 return new Facts();
             }
             Facts known;
-            if (Cache.TryGetValue(f.FullName, out known) && known.Size == size && known.Ticks == ticks && (known.VideoBytes >= 0 || !known.Readable)) return known;
-            var facts = new Facts { Size = size, Ticks = ticks };
+            if (Cache.TryGetValue(f.FullName, out known) && known.Size == size && known.Ticks == ticks && (known.VideoBytes >= 0 && known.RateKnown || !known.Readable)) return known;
+            var facts = new Facts { Size = size, Ticks = ticks, RateKnown = true };
             Mp4Probe.Info info = Mp4Probe.TryRead(f.FullName);
             if (info != null)
             {
@@ -159,6 +195,7 @@ namespace VideoMixApp
                 facts.Mark = info.Comment;
                 facts.VideoBytes = info.VideoBytes;
                 facts.VideoSeconds = info.VideoSeconds;
+                facts.RateTag = ParseRate(info.Description);
             }
             // A mark or a tab in a name would break a line of the store.
             if (facts.Mark != null && (facts.Mark.IndexOf('\t') >= 0 || facts.Mark.IndexOf('\n') >= 0)) facts.Mark = facts.Mark.Replace('\t', ' ').Replace('\n', ' ');

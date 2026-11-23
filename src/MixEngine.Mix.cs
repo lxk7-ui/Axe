@@ -38,18 +38,25 @@ namespace VideoMixApp
         // What 快拼 has to do first: videos not unified yet (waiting), clips an older version left in
         // the cache that can be moved back into the folder (moveBack), cached clips made before sound
         // tracks were verified (soundCheck).
-        private void CountWaiting(Manifest manifest, List<FileInfo> sources, out int waiting, out int moveBack, out bool soundCheck)
+        // Videos set to 成片不用 (skip) are not waited for: this batch leaves them out anyway. lowRate:
+        // unified videos under the bitrate floor, raised once (v2.7.0).
+        private void CountWaiting(Manifest manifest, List<FileInfo> sources, HashSet<string> skip, out int waiting, out int lowRate, out int moveBack, out bool soundCheck)
         {
             waiting = 0;
+            lowRate = 0;
             moveBack = 0;
             soundCheck = false;
-            var record = UnifyRecord.From(manifest, CacheDir, UnifyMark);
+            var record = UnifyRecord.From(manifest, CacheDir, UnifyMark, RaiseFloor);
             foreach (var f in sources)
             {
+                if (skip != null && skip.Contains(f.FullName)) continue;
                 switch (record.Check(f))
                 {
                     case UnifyRecord.State.Done:
                     case UnifyRecord.State.Failed:
+                        break;
+                    case UnifyRecord.State.LowRate:
+                        lowRate++;
                         break;
                     case UnifyRecord.State.Cached:
                         if (record.NeedsSoundCheck(f)) soundCheck = true;
@@ -62,10 +69,31 @@ namespace VideoMixApp
             }
         }
 
+        // The videos set to 成片不用, or null when the 素材规则 cannot be read (logged).
+        private HashSet<string> UnusedSources(ClipRules rules, List<FileInfo> sources)
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (var f in sources) if ((rules.Of(f.FullName) & ClipRule.NoUse) != 0) set.Add(f.FullName);
+            }
+            catch (ClipRulesException ex)
+            {
+                Log(RulesError(ex));
+                return null;
+            }
+            return set;
+        }
+
+        private static string RulesError(ClipRulesException ex)
+        {
+            return "错误：素材规则文件读不出来（" + ex.File + "：" + ex.Message + "）。为了不把设成「不用」的素材用进成片，本次没有出片，请稍后再试。";
+        }
+
         // The combinations of one batch. Clip lengths are in source seconds; with 变速 a video holds
         // speed times as much material for the same length.
         private List<Plan> BuildMixPlan(List<PoolClip> pool, int count, double targetSec, double tolerance, double introDuration,
-            string introPath, double speed, HashSet<string> historyKeys, Random rng)
+            string introPath, double speed, History history, List<KeyValuePair<string, string>> moved, Random rng)
         {
             double lo = targetSec - tolerance;
             double hi = targetSec + tolerance;
@@ -101,9 +129,9 @@ namespace VideoMixApp
                 attempts++;
                 List<PoolClip> body = BuildOneBody(usable, bodyMin, bodyMax, rng);
                 string fp = BodyFingerprint(body);
-                if (seen.Contains(fp)) continue;
-                if (historyKeys.Contains(HistoryKey(fp))) continue;
-                seen.Add(fp);
+                // A combination made before is remembered here too, so a repeat costs no second look.
+                if (!seen.Add(fp)) continue;
+                if (history.Used(RatioTag, fp, Sources(body), moved)) continue;
                 double bodyDur = 0.0;
                 foreach (var c in body) bodyDur += c.Duration;
                 plans.Add(new Plan
@@ -116,11 +144,127 @@ namespace VideoMixApp
                     Fingerprint = fp
                 });
             }
+            if (plans.Count < count && !_cancel && poolTotal >= bodyMin) TakeRemaining(usable, bodyMin, bodyMax, speed, introDuration, introPath, count, seen, history, moved, plans, rng);
             if (plans.Count < count)
             {
                 Log(string.Format("警告：受历史组合数量限制，仅生成 {0} 条互不重复成片（要求 {1} 条）。", plans.Count, count));
             }
             return plans;
+        }
+
+        // Few combinations left (most are in the history): random tries mostly hit used ones and may
+        // miss the last few, so with a pool small enough to list them all, the unused ones are taken
+        // directly. The list follows BuildOneBody's rules (lengths in tenths of a second).
+        private void TakeRemaining(List<PoolClip> usable, double bodyMin, double bodyMax, double speed, double introDuration, string introPath,
+            int count, HashSet<string> seen, History history, List<KeyValuePair<string, string>> moved, List<Plan> plans, Random rng)
+        {
+            var clips = new List<ComboClip>();
+            foreach (var c in usable) clips.Add(new ComboClip { Id = c.Id, Path = c.Source, Duration = c.Duration, NoOpen = c.NoOpen });
+            List<int[]> all = ComboCounter.List(clips, bodyMin, bodyMax, ComboCounter.ListLimit);
+            if (all == null) return;
+            Shuffle(all, rng);
+            int found = 0;
+            foreach (int[] seq in all)
+            {
+                if (plans.Count >= count || _cancel) break;
+                var body = new List<PoolClip>();
+                double bodyDur = 0;
+                foreach (int i in seq)
+                {
+                    body.Add(usable[i]);
+                    bodyDur += usable[i].Duration;
+                }
+                if (body[0].NoOpen) continue;
+                string fp = BodyFingerprint(body);
+                if (!seen.Add(fp) || history.Used(RatioTag, fp, Sources(body), moved)) continue;
+                plans.Add(new Plan
+                {
+                    Index = plans.Count + 1,
+                    Picked = body,
+                    IntroPath = introPath,
+                    IntroDuration = introDuration,
+                    TotalDuration = introDuration + bodyDur / speed,
+                    Fingerprint = fp
+                });
+                found++;
+            }
+            if (found > 0) Log(string.Format("剩下的组合不多，已直接挑出 {0} 条没用过的组合。", found));
+        }
+
+        // The source videos of a combination, in order (as History names them).
+        private static List<string> Sources(List<PoolClip> body)
+        {
+            var list = new List<string>(body.Count);
+            foreach (var c in body) list.Add(c.Source);
+            return list;
+        }
+
+        // 素材规则 (see ClipRules): 成片不用 videos leave the pool, 开头不用 ones stay in it but are kept
+        // out of the first position by BuildOneBody. false = no videos can be made: the rules could
+        // not be read (making videos without them would use exactly the clips ruled out), or they
+        // leave nothing to use or nothing to start with.
+        private bool ApplyClipRules(List<PoolClip> pool, ClipRules rules)
+        {
+            int unused = 0;
+            int noOpen = 0;
+            try
+            {
+                for (int i = pool.Count - 1; i >= 0; i--)
+                {
+                    ClipRule r = rules.Of(pool[i].Source);
+                    if ((r & ClipRule.NoUse) != 0)
+                    {
+                        pool.RemoveAt(i);
+                        unused++;
+                    }
+                    else if ((r & ClipRule.NoOpen) != 0)
+                    {
+                        pool[i].NoOpen = true;
+                        noOpen++;
+                    }
+                }
+            }
+            catch (ClipRulesException ex)
+            {
+                Log(RulesError(ex));
+                return false;
+            }
+            if (unused == 0 && noOpen == 0) return true;
+            Log("素材规则：" + ClipRules.Summary(noOpen, unused));
+            bool opener = false;
+            foreach (var c in pool) if (!c.NoOpen && c.Duration > 0) opener = true;
+            if (pool.Count == 0)
+            {
+                Log("错误：这个素材目录里能用的素材都设成了「成片不用」，没有素材可以出片。请在「素材规则」里取消几个再试。");
+                return false;
+            }
+            if (!opener)
+            {
+                Log("错误：能用的素材都设成了「开头不用」，没有素材可以放在成片开头。请在「素材规则」里取消几个再试。");
+                return false;
+            }
+            return true;
+        }
+
+        // The clips of one output in the order they play, each with the time it starts at in the video
+        // ("0:00 a.mp4 | 0:12 b.mp4"), for 生成报告.csv: a clip seen in an output is found in the folder
+        // at once, e.g. to give it a 素材规则. A clip of a subfolder is named with the subfolder.
+        private static string ClipOrder(Plan p, double speed, string sourceRoot)
+        {
+            var sb = new StringBuilder();
+            string top = (sourceRoot ?? "").TrimEnd('\\', '/');
+            double t = p.IntroDuration;
+            foreach (var c in p.Picked)
+            {
+                if (sb.Length > 0) sb.Append(" | ");
+                int sec = (int)Math.Floor(t + 0.05);
+                sb.Append((sec / 60).ToString(Inv)).Append(':').Append((sec % 60).ToString("00", Inv)).Append(' ');
+                string dir = (Path.GetDirectoryName(c.Source) ?? "").TrimEnd('\\', '/');
+                if (!string.Equals(dir, top, StringComparison.OrdinalIgnoreCase)) sb.Append(c.Category).Append('\\');
+                sb.Append(Path.GetFileName(c.Source));
+                t += c.Duration / speed;
+            }
+            return sb.ToString();
         }
 
         // The 片头 in the unified format: the file itself when it is unified already, else its copy in
@@ -134,7 +278,9 @@ namespace VideoMixApp
                 Log("片头素材不存在，已忽略片头。");
                 return null;
             }
-            if (Unified.IsUnified(Unified.Read(fi), UnifyMark))
+            Unified.Facts facts = Unified.Read(fi);
+            bool unified = Unified.IsUnified(facts, UnifyMark);
+            if (unified && !Unified.LowRate(facts, RaiseFloor))
             {
                 Log("片头已是统一格式，直接使用：" + fi.Name);
                 return fi.FullName;
@@ -147,12 +293,13 @@ namespace VideoMixApp
             }
             string path = Path.Combine(CacheDir, "intro_" + tag + ".mp4");
             double dur;
-            if (File.Exists(path) && CheckOutput(path, out dur) == null)
+            // A copy made before the bitrate floor moved into 规格统一 (v2.7.0) may be under it.
+            if (File.Exists(path) && CheckOutput(path, out dur) == null && !Unified.LowRate(Unified.Read(new FileInfo(path)), RaiseFloor))
             {
                 Log("片头缓存有效，复用: " + Path.GetFileName(path));
                 return path;
             }
-            Log("正在标准化片头素材: " + fi.Name);
+            Log((unified ? "片头视频码率低于 " + RaiseFloor + " kbps，在软件缓存里做一份提高码率的（片头文件本身不动）: " : "正在标准化片头素材: ") + fi.Name);
             if (!Directory.Exists(CacheDir)) Directory.CreateDirectory(CacheDir);
             var job = new Job
             {
@@ -165,6 +312,8 @@ namespace VideoMixApp
                 Out = path,
                 Part = Path.Combine(CacheDir, "part_intro_" + tag + ".mp4")
             };
+            // Already unified, only under the floor: raised straight away, its sound copied.
+            if (unified) StartRaise(job, Unified.Kbps(facts));
             var failed = new List<Job>();
             if (!RunTranscodeJobs(new List<Job> { job }, 1, failed, false, "片头处理")) return null;
             if (failed.Count > 0)
@@ -185,21 +334,38 @@ namespace VideoMixApp
         public string Mix(int count, double targetSec, double tolerance, int mixParallel, string sourceRoot, string category, string outputRoot, string introFile, string nameFormat)
         {
             Log("=== 阶段 2：随机快拼出片 ===");
+            LastMade = 0;
             if (_cancel || !EnsureFFmpeg()) return null;
             EffectOptions fx = Effects != null && Effects.Any ? Effects : null;
             double speed = fx != null ? EffectOptions.ValidSpeed(fx.Speed) : 1.0;
             Unified.ResetWritable();
+            // 素材规则 are read once, before anything else, and hold for the whole batch.
+            var rules = new ClipRules(AppDir);
+            List<FileInfo> sources = ScanSources(sourceRoot, category);
+            HashSet<string> unused = UnusedSources(rules, sources);
+            if (unused == null) return null;
             Manifest manifest = LoadManifest();
             int waiting;
+            int lowRate;
             int moveBack;
             bool soundCheck;
-            CountWaiting(manifest, ScanSources(sourceRoot, category), out waiting, out moveBack, out soundCheck);
-            if (waiting > 0 || moveBack > 0 || soundCheck)
+            CountWaiting(manifest, sources, unused, out waiting, out lowRate, out moveBack, out soundCheck);
+            if (waiting > 0 || lowRate > 0 || moveBack > 0 || soundCheck)
             {
-                if (waiting > 0) Log(string.Format("当前素材目录有 {0} 个未统一的素材，先做规格统一...", waiting));
+                string raise = lowRate > 0 ? string.Format("{0} 个素材视频码率低于 {1} kbps，提高一次码率（每个素材只做一次，以后快拼直接拼接）", lowRate, RaiseFloor) : null;
+                if (waiting > 0) Log(string.Format("当前素材目录有 {0} 个未统一的素材，先做规格统一{1}...", waiting, raise != null ? "；另有 " + raise : ""));
+                else if (raise != null) Log("先做规格统一：" + raise + "...");
                 else if (moveBack > 0) Log(string.Format("先把 {0} 个旧版统一好的素材从软件缓存移回素材文件夹（只复制，不转码）...", moveBack));
                 else Log("先检查一遍旧版本统一的素材是否带音轨...");
-                manifest = Preprocess(sourceRoot, category, false, Math.Max(mixParallel, 2), false);
+                _autoSkip = unused.Count > 0 ? unused : null;
+                try
+                {
+                    manifest = Preprocess(sourceRoot, category, false, Math.Max(mixParallel, 2), false);
+                }
+                finally
+                {
+                    _autoSkip = null;
+                }
                 if (manifest == null) return null;
             }
             if (_cancel) return null;
@@ -225,12 +391,29 @@ namespace VideoMixApp
             bool removeBatch = false;
             try
             {
-                HashSet<string> historyKeys = LoadHistoryKeys();
-                Log(string.Format("已载入历史组合记录 {0} 条，本次将避开这些组合。", historyKeys.Count));
+                // Before v2.7.0 a history that could not be read (another program holding it) was
+                // skipped, and the batch could repeat earlier combinations.
+                History history = History.Load(AppDir);
+                if (history == null)
+                {
+                    Log("错误：历史记录文件 _history\\mix_history.csv 读不出来（可能正被别的程序占用）。为了不出和以前重复的成片，本次没有出片，请稍后再试。");
+                    removeBatch = true;
+                    return null;
+                }
+                Log(string.Format("已载入历史组合记录 {0} 条，本次将避开这些组合。", history.Count));
                 var rng = new Random((int)(DateTime.Now.Ticks % int.MaxValue));
                 // Read the folder again: it may have changed while the unify pass ran.
                 List<PoolClip> pool = BuildPool(manifest, sourceRoot, category);
-                List<Plan> plans = BuildMixPlan(pool, count, targetSec, tolerance, introDur, introPath, speed, historyKeys, rng);
+                if (!ApplyClipRules(pool, rules))
+                {
+                    removeBatch = true;
+                    return null;
+                }
+                var poolPaths = new List<string>();
+                foreach (var c in pool) poolPaths.Add(c.Source);
+                // Combinations recorded while this material lay elsewhere (another drive letter or PC).
+                List<KeyValuePair<string, string>> moved = history.Translations(RatioTag, sourceRoot, poolPaths);
+                List<Plan> plans = BuildMixPlan(pool, count, targetSec, tolerance, introDur, introPath, speed, history, moved, rng);
                 if (plans == null || plans.Count == 0)
                 {
                     removeBatch = true;
@@ -310,8 +493,19 @@ namespace VideoMixApp
                 int parallel = Math.Max(1, mixParallel);
                 int hwCap = hwOn ? Math.Min(parallel, HwEncoder.MaxSessions(_hw)) : 0;
                 int cores = Math.Max(1, Environment.ProcessorCount);
-                if (encodes > 0) Log(hwOn ? string.Format("需要重新编码 {0} 条：{1} 同时处理 {2} 条 + CPU 处理其余", encodes, HwEncoder.DisplayName(_hw), hwCap)
-                    : string.Format("需要重新编码 {0} 条：CPU（libx264）同时处理 {1} 条", encodes, Math.Min(parallel, encodes)));
+                int cpuCap = Math.Min(parallel, DeviceCheck.EncodeCap());
+                if (encodes > 0)
+                {
+                    // Said plainly, because "重新编码" read like an extra step before the effects: a
+                    // filter, sticker, subtitle or speed change alters the picture itself, so such a
+                    // video is made in one encode, in which its clips are joined as well.
+                    int withFx = 0;
+                    foreach (var c in items) if (c.Fx != null) withFx++;
+                    string why = withFx == encodes ? "加成片效果需要编码 {0} 条（拼接和效果在同一次编码里完成）"
+                        : withFx == 0 ? "提高码率需要重新编码 {0} 条" : "加成片效果或提高码率需要编码 {0} 条";
+                    Log(string.Format(why, encodes) + "：" + (hwOn ? string.Format("{0} 同时处理 {1} 条 + CPU 处理其余", HwEncoder.DisplayName(_hw), hwCap)
+                        : string.Format("CPU（libx264）同时处理 {0} 条", Math.Min(cpuCap, encodes))));
+                }
                 var okPlans = new List<Plan>();
                 int done = 0;
                 int failedCount = 0;
@@ -319,7 +513,7 @@ namespace VideoMixApp
                 double totalSec = 0;
                 foreach (var p in plans) totalSec += p.TotalDuration;
                 var sw = Stopwatch.StartNew();
-                var report = new List<string> { fx != null ? "成片,下限秒,上限秒,实际秒,滤镜,贴纸,变速,字幕条数,视频码率kbps" : "成片,下限秒,上限秒,实际秒,视频码率kbps" };
+                var report = new List<string> { (fx != null ? "成片,下限秒,上限秒,实际秒,滤镜,贴纸,变速,字幕条数,视频码率kbps" : "成片,下限秒,上限秒,实际秒,视频码率kbps") + ",素材顺序" };
                 long lastStatus = -10000;
                 var memory = new MemoryGate();
                 long lastLook = -1;
@@ -332,14 +526,32 @@ namespace VideoMixApp
                     }
                     while (queue.Count > 0 && running.Count < parallel)
                     {
-                        Concat c = queue.First.Value;
+                        int hwRunning = 0;
+                        int cpuRunning = 0;
+                        foreach (var r in running)
+                        {
+                            if (r.UsingHw) hwRunning++;
+                            else if (r.Encodes) cpuRunning++;
+                        }
+                        // The first waiting video that may start now: a CPU encode waits while cpuCap of
+                        // them run, a stream-copy join or a GPU encode behind it may go first.
+                        LinkedListNode<Concat> node = queue.First;
+                        bool useHw = false;
+                        for (; node != null; node = node.Next)
+                        {
+                            Concat q = node.Value;
+                            useHw = q.Encodes && hwOn && (q.AbrKbps == 0 || hwAbr) && !q.HwFailed && hwRunning < hwCap;
+                            if (!q.Encodes || useHw || cpuRunning < cpuCap) break;
+                        }
+                        if (node == null) break;
+                        Concat c = node.Value;
                         long memNeed = c.Encodes ? 300 : 60;
                         if (!memory.MayStart(memNeed, running.Count))
                         {
                             NoteMemory(memory, running.Count);
                             break;
                         }
-                        queue.RemoveFirst();
+                        queue.Remove(node);
                         TryDelete(c.Part);
                         c.Task = new FfTask();
                         c.UsingHw = false;
@@ -350,10 +562,7 @@ namespace VideoMixApp
                         }
                         else
                         {
-                            int hwRunning = 0;
-                            foreach (var r in running) if (r.UsingHw) hwRunning++;
-                            bool useHw = hwOn && (c.AbrKbps == 0 || hwAbr) && !c.HwFailed && hwRunning < hwCap;
-                            int cpuJobs = Math.Max(1, Math.Min(parallel, running.Count + 1 + queue.Count) - (useHw ? hwRunning + 1 : hwRunning));
+                            int cpuJobs = Math.Max(1, Math.Min(cpuCap, Math.Min(parallel, running.Count + 1 + queue.Count) - (useHw ? hwRunning + 1 : hwRunning)));
                             int threads = Math.Max(2, Math.Min(cores, (int)Math.Ceiling(cores / (double)cpuJobs)));
                             c.UsingHw = useHw;
                             StartFFmpeg(c.Fx != null ? BuildEffectArgs(c, useHw, threads) : BuildRecodeArgs(c, useHw, threads), c.Task, taskRoot);
@@ -464,6 +673,7 @@ namespace VideoMixApp
                                 row += ",无,无,1x,0";
                             }
                             row += string.Format(Inv, ",{0:0}", kbps);
+                            row += "," + CsvField(ClipOrder(c.Plan, speed, sourceRoot));
                             report.Add(row);
                             string low = MinKbps > 0 && kbps > 0 && kbps < FloorKbps ? "，仍低于要求" : "";
                             Log(string.Format("  已完成 {0}/{1}: {2}（实际 {3:N1} 秒，视频码率 {4:N0} kbps{5}）", done, plans.Count, c.Name, actual, kbps, low));
@@ -501,8 +711,8 @@ namespace VideoMixApp
                 sw.Stop();
                 WriteReport(Path.Combine(batchDir, "生成报告.csv"), report, okPlans.Count > 0);
                 // Only combinations that actually produced a video are remembered.
-                AppendHistory(okPlans, sourceRoot, targetSec, tolerance);
-                Log(string.Format("已把 {0} 条组合写入历史记录，以后不会再出现相同组合。", okPlans.Count));
+                if (okPlans.Count > 0 && AppendHistory(okPlans, sourceRoot, category, targetSec, tolerance))
+                    Log(string.Format("已把 {0} 条组合写入历史记录，以后不会再出现相同组合。", okPlans.Count));
                 if (failedCount > 0) Log(string.Format("注意：{0} 条成片生成失败，详见上方日志。", failedCount));
                 Log(string.Format("全部完成：{0} 条互不重复成片，总耗时 {1:N1} 秒", okPlans.Count, sw.Elapsed.TotalSeconds));
                 if (okPlans.Count == 0)
@@ -511,6 +721,7 @@ namespace VideoMixApp
                     return null;
                 }
                 Progress(100);
+                LastMade = okPlans.Count;
                 return batchDir;
             }
             finally
@@ -711,11 +922,17 @@ namespace VideoMixApp
         // one "tv / bt470bg", the next "unknown"). By default ffmpeg rebuilds the whole filter graph
         // at such a change, which restarts every timestamp there and cut the video short at the
         // second clip. Unified clips always share size and pixel format, so the graph can stay.
+        // v2.8.3: the decoders and the filter graph get this job's share of the CPU (threads), as the
+        // encoder already did. Left alone ffmpeg gives each of them as many threads as the CPU has, in
+        // every one of the jobs running at once: with 10 jobs on 16 threads that was about 950 threads
+        // and 2.3 GB; capped 390 threads, 1.8 GB and the batch 6 % sooner (_tools\v30\bench2.ps1).
         private string BuildEffectArgs(Concat c, bool hw, int threads)
         {
             var sb = new StringBuilder("-hide_banner -nostdin -y -loglevel error -nostats -progress pipe:1 ");
-            if (!string.IsNullOrEmpty(c.Plan.IntroPath)) sb.Append("-reinit_filter 0 -i \"").Append(c.Plan.IntroPath).Append("\" ");
-            sb.Append("-reinit_filter 0 -f concat -safe 0 -i \"").Append(c.ListFile).Append("\" ");
+            sb.Append("-filter_complex_threads ").Append(threads).Append(' ');
+            string dec = "-threads " + threads.ToString(Inv) + " ";
+            if (!string.IsNullOrEmpty(c.Plan.IntroPath)) sb.Append(dec).Append("-reinit_filter 0 -i \"").Append(c.Plan.IntroPath).Append("\" ");
+            sb.Append(dec).Append("-reinit_filter 0 -f concat -safe 0 -i \"").Append(c.ListFile).Append("\" ");
             if (c.Fx.StickerPath != null) sb.Append(EffectAssets.InputOptions(c.Fx.StickerPath)).Append("-i \"").Append(c.Fx.StickerPath).Append("\" ");
             string audio;
             sb.Append("-filter_complex \"").Append(EffectGraph(c, hw, threads, out audio)).Append("\" ");
@@ -734,8 +951,8 @@ namespace VideoMixApp
             string video = hw
                 ? HwEncoder.VideoArgs(_hw, _crf, _gop, c.AbrKbps) + (_hw == HwKind.Qsv ? " -vf format=nv12" : "")
                 : string.Format(Inv, "-c:v libx264 -preset superfast -b:v {0}k -profile:v high -level 4.1 -pix_fmt yuv420p -g {1} -keyint_min {1} -sc_threshold 0 -threads {2}", c.AbrKbps, _gop, threads);
-            return string.Format(Inv, "-hide_banner -nostdin -y -loglevel error -nostats -progress pipe:1 -reinit_filter 0 -f concat -safe 0 -i \"{0}\" -map 0:v:0 -map 0:a:0 " +
-                "{1} -c:a copy -max_muxing_queue_size 4096 -movflags +faststart \"{2}\"", c.ListFile, video, c.Part);
+            return string.Format(Inv, "-hide_banner -nostdin -y -loglevel error -nostats -progress pipe:1 -filter_threads {3} -threads {3} -reinit_filter 0 -f concat -safe 0 -i \"{0}\" -map 0:v:0 -map 0:a:0 " +
+                "{1} -c:a copy -max_muxing_queue_size 4096 -movflags +faststart \"{2}\"", c.ListFile, video, c.Part, threads);
         }
 
         // An output must reach the platforms' minimum with room to spare: upload checks count a kbps
@@ -779,10 +996,12 @@ namespace VideoMixApp
                 else
                 {
                     // Re-encoded at the usual quality an output comes out near its clips' bitrate, and
-                    // higher when sped up (measured 1.27x at 2x, 1.55x at 4x). Below 1.5x the minimum
-                    // the usual setting could end up under it, so the bitrate is set instead.
+                    // higher when sped up (measured 1.27x at 2x, 1.55x at 4x), but with a filter it can
+                    // also come out lower (0.85x at 1.5x on calm clips raised to the floor). Below 1.7x
+                    // the minimum the usual setting could end up under it (and be made a second time),
+                    // so the bitrate is set in the one encode instead.
                     double expect = c.JoinKbps * Math.Pow(c.Fx.Speed, 0.35);
-                    if (expect >= MinKbps * 1.5) continue;
+                    if (expect >= MinKbps * 1.7) continue;
                     c.AbrKbps = Math.Max(TargetKbps, (int)Math.Round(expect * 1.1));
                     abr++;
                 }
@@ -893,8 +1112,12 @@ namespace VideoMixApp
                 // 10 videos at once finish about 15 % sooner. The colour conversions get this job's
                 // threads (swscale uses one by default) and end in yuv420p, so the sticker and the
                 // subtitles work as before.
+                // v2.8.3: the way back is always BT.709 and the frames say so. Before, the picture came
+                // back as BT.709 while the video kept the tag of its first clip, so clips tagged BT.601
+                // or untagged were shown with slightly wrong colours (BT.709 clips are unchanged).
                 g.Append(v).Append("scale=threads=").Append(threads).Append(",format=gbrpf32,lut3d=file=").Append(p.LutFile)
-                    .Append(":interp=tetrahedral,scale=threads=").Append(threads).Append(",format=yuv420p[lv];");
+                    .Append(":interp=tetrahedral,scale=threads=").Append(threads).Append(":out_color_matrix=bt709:out_range=tv,format=yuv420p,")
+                    .Append("setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709[lv];");
                 v = "[lv]";
             }
             if (p.StickerPath != null)

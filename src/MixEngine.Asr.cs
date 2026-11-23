@@ -181,7 +181,7 @@ namespace VideoMixApp
                     p.ErrorDataReceived += (s, e) => { };
                     p.Start();
                     ChildProcesses.Add(p);
-                    try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+                    ChildProcesses.Background(p);
                     lock (_live)
                     {
                         _live.Add(p);

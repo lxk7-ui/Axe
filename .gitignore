@@ -1,6 +1,9 @@
 # 构建产物
 bin/
 
+# .NET Framework 4.7.1 引用程序集（build.ps1 优先使用；NuGet 包 Microsoft.NETFramework.ReferenceAssemblies.net471，见 README）
+refs/
+
 # 打包输出（package.ps1 生成的文件夹和压缩包；发布包放在 GitHub Releases）
 Axe_v*/
 *.zip

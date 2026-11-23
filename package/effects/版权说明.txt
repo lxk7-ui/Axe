@@ -14,14 +14,26 @@ Axe 成片效果素材的来源与许可
   09_人像 10_清透 11_复古 12_浓郁（强度调为 80%）
     来源：GlassMeter film looks（kodak-portra-400、kodak-ektachrome-e100、kodak-gold-200、kodak-ektar-100）
     https://github.com/TrondW/glassmeter-film-looks   许可：CC BY 4.0（https://creativecommons.org/licenses/by/4.0/）
+  13_明亮 14_晴空 15_暖肤 16_落日 17_森系 18_蓝调 19_质感 20_夜景
+    来源：LUMIX Original Looks（Meridian、Skylight、Heartland、Lowsun、Canopy、DuskTide、Matinee、NightMarket）
+    https://github.com/t0saki/lumix-original-looks   许可：MIT，Copyright (c) 2026 Zhengxiao Wu (t0saki)
+  21_反差 22_日系 23_冷白 24_樱花粉 25_秋日 26_怀旧 27_梦幻（强度调为 60%～80%，25 由 64 点重采样为 33 点）
+    来源：Striped Purple color grading LUTs（Vanilla Bean、Polaroid Mint Cream、Snowy Blues、Cherry Champagne、
+          Sea Turtle、Grey Matter、Arcade Dayz）
+    https://github.com/stripedpurple/color-grading-luts   许可：MIT，Copyright (c) 2020 Nixua
 
 贴纸（effects\贴纸，动态 WebP）
-  20_火爆 至 35_好吃：Microsoft Fluent Emoji Animated 的动态表情，缩放后转成 WebP
+  01_限时特惠 至 53_买到赚到：Axe 绘制的促销文字贴纸（标签、横幅、爆炸星、价签），所用字体：
+    得意黑（Smiley Sans） https://github.com/atelier-anchor/smiley-sans
+    站酷快乐体、站酷庆科黄油体 https://github.com/google/fonts
+    许可均为 SIL Open Font License 1.1
+  100_火爆 至 201_猫猫笑哭：Microsoft Fluent Emoji Animated 的动态表情，缩放后转成 WebP
     https://github.com/microsoft/fluentui-emoji-animated   许可：MIT，Copyright (c) Microsoft Corporation
-  40_购物车 至 51_优惠券：Microsoft Fluent Emoji 的 3D 表情，加了简单的动画
+  300_购物车 至 311_优惠券：Microsoft Fluent Emoji 的 3D 表情，加了简单的动画
     https://github.com/microsoft/fluentui-emoji   许可：MIT，Copyright (c) Microsoft Corporation
-  01_限时特惠 至 13_库存告急：Axe 绘制的促销文字贴纸，文字字体为得意黑（Smiley Sans）
-    https://github.com/atelier-anchor/smiley-sans   许可：SIL Open Font License 1.1
+  400_鼓掌 至 439_跳舞：Google Noto Animated Emoji，缩放后转成 WebP
+    https://googlefonts.github.io/noto-emoji-files/   许可：CC BY 4.0（https://creativecommons.org/licenses/by/4.0/）
+    署名：Animated Noto Emoji by Google
 
 自己添加
   滤镜：把 .cube 文件放进 effects\滤镜；贴纸：把 .webp / .gif / .png 放进 effects\贴纸。

@@ -164,6 +164,8 @@ namespace VideoMixApp
             var inUse = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             int inPlace = 0;
             int kept = 0;
+            int ruledOut = 0;
+            int floor = RaiseFloor;
             foreach (var kv in tagToFile)
             {
                 string tag = kv.Key;
@@ -174,6 +176,19 @@ namespace VideoMixApp
                     inPlace++;
                     // A copy from v2.2 or a stopped run is no longer needed once the video is in place.
                     if (File.Exists(NormPath(tag))) superseded.Add(tag);
+                    // 码率下限 (v2.7.0): a unified video under the floor is raised once, in place. Not
+                    // when 快拼's automatic pass leaves it out (成片不用) or when raising it failed before
+                    // (the 规格统一 buttons try that again).
+                    SourceEntry rf;
+                    bool failedBefore = !retryFailed && oldFailed.TryGetValue(tag, out rf) && SameVersion(rf, f);
+                    // The record of a failed raise is kept, or the next pass would try it again.
+                    if (failedBefore && Unified.LowRate(x, floor)) keepFailed.Add(oldFailed[tag]);
+                    if (Unified.LowRate(x, floor) && !failedBefore && Unified.CanWrite(f.DirectoryName) && !(_autoSkip != null && _autoSkip.Contains(f.FullName)))
+                    {
+                        Job j = InPlaceJob(tag, f);
+                        StartRaise(j, Unified.Kbps(x));
+                        todo.Add(j);
+                    }
                     continue;
                 }
                 SourceEntry rec;
@@ -201,6 +216,13 @@ namespace VideoMixApp
                 if (!retryFailed && oldFailed.TryGetValue(tag, out fe) && SameVersion(fe, f))
                 {
                     keepFailed.Add(fe);
+                    continue;
+                }
+                // 快拼's automatic pass leaves out videos set to 成片不用: they would only be unified to
+                // be left out of the batch. The 规格统一 buttons unify them as usual.
+                if (_autoSkip != null && _autoSkip.Contains(f.FullName))
+                {
+                    ruledOut++;
                     continue;
                 }
                 TryDelete(NormPath(tag));
@@ -249,14 +271,18 @@ namespace VideoMixApp
 
             int adopt = 0;
             int encode = 0;
+            int raise = 0;
             foreach (var j in todo)
             {
                 if (j.Kind == JobKind.Adopt) adopt++;
+                else if (j.Raise) raise++;
                 else encode++;
             }
-            Log(string.Format("共 {0} 个视频：已统一 {1} 个，待统一 {2} 个{3}", sources.Count, inPlace + kept, encode,
-                adopt > 0 ? string.Format("，另有 {0} 个旧版统一好的从软件缓存移回素材文件夹（只复制，不转码）", adopt) : ""));
+            Log(string.Format("共 {0} 个视频：已统一 {1} 个，待统一 {2} 个{3}{4}", sources.Count, inPlace + kept, encode,
+                adopt > 0 ? string.Format("，另有 {0} 个旧版统一好的从软件缓存移回素材文件夹（只复制，不转码）", adopt) : "",
+                raise > 0 ? string.Format("；{0} 个已统一的视频码率低于 {1} kbps，提高一次码率（以后快拼直接拼接）", raise, floor) : ""));
             if (keepFailed.Count > 0) Log(string.Format("跳过 {0} 个上次统一失败的素材（点「规格统一」可重试）。", keepFailed.Count));
+            if (ruledOut > 0) Log(string.Format("跳过 {0} 个设成「成片不用」、还没统一的素材（这一批不用；点「规格统一」会照常统一）。", ruledOut));
             if (force && inPlace > 0) Log(string.Format("强制重建：{0} 个视频已在原位置统一（原视频已被替换），不再重做。", inPlace));
             if (todo.Count > 0 && !CheckSpace(todo, parallelJobs)) return null;
 
@@ -281,7 +307,8 @@ namespace VideoMixApp
                     continue;
                 }
                 if (j.Kind == JobKind.Cache) continue;
-                nowInPlace++;
+                // A raised video was counted as unified in place already.
+                if (!j.Raise) nowInPlace++;
                 if (j.Kind == JobKind.Adopt) movedBack++;
                 TryDelete(NormPath(j.Tag));
                 if (j.AdoptedNorm != null && !string.Equals(j.AdoptedNorm, NormPath(j.Tag), StringComparison.OrdinalIgnoreCase) && !SourceExists(j.AdoptedNorm, srcMap))
@@ -305,10 +332,18 @@ namespace VideoMixApp
                 Log(string.Format("已停止规格统一：本次完成 {0} 个，还有 {1} 个未统一，下次点「规格统一」会接着处理。", finished, todo.Count - finished));
                 return null;
             }
-            if (failed.Count > 0)
+            // A video whose bitrate could not be raised is still unified and used as it is.
+            var notRaised = failed.FindAll(j => j.Raise);
+            var broken = failed.FindAll(j => !j.Raise);
+            if (broken.Count > 0)
             {
-                Log(string.Format("{0} 个素材统一失败，快拼时不会选用：", failed.Count));
-                foreach (var j in failed) Log("  失败: " + j.Origin + "（" + j.Problem + "）");
+                Log(string.Format("{0} 个素材统一失败，快拼时不会选用：", broken.Count));
+                foreach (var j in broken) Log("  失败: " + j.Origin + "（" + j.Problem + "）");
+            }
+            if (notRaised.Count > 0)
+            {
+                Log(string.Format("{0} 个素材的码率这次没能提高，照常使用（点「规格统一」会再试）：", notRaised.Count));
+                foreach (var j in notRaised) Log("  " + j.Origin + "（" + j.Problem + "）");
             }
             if (movedBack > 0) Log(string.Format("已把 {0} 个旧版统一好的素材移回素材文件夹，软件缓存相应减小。", movedBack));
             List<PoolClip> pool = BuildPool(manifest, sourceRoot, category);
@@ -461,7 +496,7 @@ namespace VideoMixApp
         // The unified clips of the folder that 快拼 can use right now (see UnifyRecord.Usable).
         private List<PoolClip> BuildPool(Manifest manifest, string sourceRoot, string category)
         {
-            var record = UnifyRecord.From(manifest, CacheDir, UnifyMark);
+            var record = UnifyRecord.From(manifest, CacheDir, UnifyMark, RaiseFloor);
             var pool = new List<PoolClip>();
             foreach (var f in ScanSources(sourceRoot, category))
             {

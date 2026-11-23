@@ -10,7 +10,11 @@ $csc = Join-Path $sdk.FullName "Roslyn\bincore\csc.dll"
 # Lowest complete reference set on this machine. The exe binds to the 4.0.0.0 framework assemblies;
 # Roslyn emits Array.Empty<T> (added in 4.6), so the floor is .NET Framework 4.6, which every
 # Windows 10/11 build includes. The bundled ffmpeg is 64-bit and needs Windows 10+ anyway.
-$ref = "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1"
+# refs\v4.7.1 is Microsoft's reference pack (NuGet Microsoft.NETFramework.ReferenceAssemblies.net471
+# 1.0.3, signed DLLs only) kept with the source, so the build no longer depends on what an SDK or
+# Visual Studio update leaves installed (the system copy vanished on 2026-11-22).
+$ref = Join-Path $PSScriptRoot "refs\v4.7.1"
+if (-not (Test-Path (Join-Path $ref "mscorlib.dll"))) { $ref = "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.1" }
 if (-not (Test-Path $csc)) { throw "Roslyn compiler not found: $csc" }
 if (-not (Test-Path (Join-Path $ref "mscorlib.dll"))) { throw ".NET Framework reference assemblies not found: $ref" }
 $refs = @("mscorlib.dll", "System.dll", "System.Core.dll", "System.Xaml.dll", "System.Web.Extensions.dll",

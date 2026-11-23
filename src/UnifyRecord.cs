@@ -13,6 +13,11 @@ namespace VideoMixApp
         // Videos that still need 规格统一, relative to the folder, with a reason suffix where useful.
         public readonly List<string> Waiting = new List<string>();
         public string Error;
+        // 素材规则 of these videos (filled in by the main window; a video with both counts as 成片不用).
+        public int NoOpen;
+        public int NoUse;
+        // Unified videos whose bitrate the next 规格统一 raises (v2.7.0); not in Waiting.
+        public int LowRate;
     }
 
     // A unified clip 快拼 can use: Path is the file to join (the source itself, or its copy in the
@@ -25,6 +30,8 @@ namespace VideoMixApp
         public string Source;
         public string Category;
         public double Duration;
+        // 素材规则「开头不用」: never the first clip of an output (see ClipRules).
+        public bool NoOpen;
     }
 
     // Whether source videos are unified for one ratio. Since v2.3.0 that is mainly a mark inside the
@@ -34,12 +41,15 @@ namespace VideoMixApp
     // another ratio, and videos in folders Axe cannot write to. It also lists videos that failed.
     internal sealed class UnifyRecord
     {
-        public enum State { Done, Cached, Pending, Changed, Failed, OtherRatio }
+        // LowRate (v2.7.0): unified, but under the bitrate floor and not raised for it yet.
+        public enum State { Done, Cached, Pending, Changed, Failed, OtherRatio, LowRate }
 
         private static readonly Regex NormRe = new Regex("^norm_([0-9A-F]{12})\\.mp4$", RegexOptions.IgnoreCase);
 
         private readonly string _cacheDir;
         private readonly string _mark;
+        // Bitrate floor in kbps (MixEngine.RaiseFloor), 0 = none.
+        private readonly int _floor;
         private readonly HashSet<string> _norms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, SourceEntry> _byTag = new Dictionary<string, SourceEntry>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _byReuseKey = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -47,10 +57,11 @@ namespace VideoMixApp
         private readonly Dictionary<string, double> _dur = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _withSound = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        private UnifyRecord(string cacheDir, string mark)
+        private UnifyRecord(string cacheDir, string mark, int floorKbps)
         {
             _cacheDir = cacheDir;
             _mark = mark;
+            _floor = floorKbps;
         }
 
         public string Mark
@@ -58,14 +69,14 @@ namespace VideoMixApp
             get { return _mark; }
         }
 
-        public static UnifyRecord Load(string cacheDir, string mark)
+        public static UnifyRecord Load(string cacheDir, string mark, int floorKbps)
         {
-            return From(MixEngine.ReadManifest(cacheDir), cacheDir, mark);
+            return From(MixEngine.ReadManifest(cacheDir), cacheDir, mark, floorKbps);
         }
 
-        public static UnifyRecord From(Manifest m, string cacheDir, string mark)
+        public static UnifyRecord From(Manifest m, string cacheDir, string mark, int floorKbps)
         {
-            var r = new UnifyRecord(cacheDir, mark);
+            var r = new UnifyRecord(cacheDir, mark, floorKbps);
             try
             {
                 if (Directory.Exists(cacheDir))
@@ -113,9 +124,17 @@ namespace VideoMixApp
         public State Check(FileInfo f)
         {
             Unified.Facts x = Unified.Read(f);
-            if (Unified.IsUnified(x, _mark)) return State.Done;
-            string tag = MixEngine.MakeTag(f.FullName);
+            string tag;
             SourceEntry rec;
+            if (Unified.IsUnified(x, _mark))
+            {
+                // Under the floor: raised by the next 规格统一, unless that cannot be done here (a folder
+                // Axe cannot write to) or failed for this very version of the file.
+                if (!Unified.LowRate(x, _floor) || !Unified.CanWrite(f.DirectoryName)) return State.Done;
+                tag = MixEngine.MakeTag(f.FullName);
+                return _failed.TryGetValue(tag, out rec) && rec.size == x.Size && rec.lastWrite == Stamp(f) ? State.Done : State.LowRate;
+            }
+            tag = MixEngine.MakeTag(f.FullName);
             if (_norms.Contains(tag))
             {
                 return _byTag.TryGetValue(tag, out rec) && IsChanged(rec, f) ? State.Changed : State.Cached;
@@ -187,6 +206,12 @@ namespace VideoMixApp
                     if (s == State.Done || s == State.Cached)
                     {
                         st.Done++;
+                        continue;
+                    }
+                    if (s == State.LowRate)
+                    {
+                        st.Done++;
+                        st.LowRate++;
                         continue;
                     }
                     string dir = f.DirectoryName.TrimEnd('\\');

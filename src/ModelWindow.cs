@@ -29,25 +29,25 @@ namespace VideoMixApp
             _log = log;
             Width = 440;
             SizeToContent = SizeToContent.Height;
-            Resources["Bar"] = MainWindow.MakeProgressBarStyle();
+            Resources["Bar"] = MainWindow.MakeProgressBarStyle(6.0);
             var body = new StackPanel { Margin = new Thickness(22.0, 6.0, 22.0, 18.0) };
             body.Children.Add(new TextBlock
             {
                 Text = "语音识别模型 · 约 " + (MixEngine.AsrModelSize >> 20) + "MB",
-                FontSize = 13.0,
-                Foreground = SB(CTextMain)
-            });
+                FontSize = 13.0
+            }.Fg(K.Text));
             _bar = new ProgressBar { Minimum = 0, Maximum = 1000, Value = 0, Margin = new Thickness(0.0, 12.0, 0.0, 6.0), Style = (Style)Resources["Bar"] };
             body.Children.Add(_bar);
-            _status = new TextBlock { FontSize = 12.0, Foreground = SB(CTextHint), TextWrapping = TextWrapping.Wrap, Text = "未下载" };
+            _status = new TextBlock { FontSize = 12.0, TextWrapping = TextWrapping.Wrap, Text = "未下载" }.Fg(K.TextHint);
             body.Children.Add(_status);
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0.0, 16.0, 0.0, 0.0) };
-            _go = new Button { Content = "下载", Width = 96, Height = 32, Margin = new Thickness(0.0, 0.0, 8.0, 0.0), Style = MainWindow.MakePrimaryButtonStyle(), FontSize = 13.0 };
+            // (v2.7.1: the main button on the right, as in Axe's other dialogs.)
+            _go = new Button { Content = "下载", Width = 96, Height = 32, Style = MainWindow.MakePrimaryButtonStyle(), FontSize = 13.0 };
             _go.Click += (s, e) => GoClick();
-            var cancel = new Button { Content = "取消", Width = 80, Height = 32, Style = MainWindow.MakeSecondaryButtonStyle(), FontSize = 13.0 };
+            var cancel = new Button { Content = "取消", Width = 80, Height = 32, Margin = new Thickness(0.0, 0.0, 10.0, 0.0), Style = MainWindow.MakeSecondaryButtonStyle(), FontSize = 13.0 };
             cancel.Click += (s, e) => Close();
-            buttons.Children.Add(_go);
             buttons.Children.Add(cancel);
+            buttons.Children.Add(_go);
             body.Children.Add(buttons);
             DialogChrome.Apply(this, "下载语音识别模型", IconSparkle, body, false);
             _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -69,7 +69,7 @@ namespace VideoMixApp
             _dl = new SpeechModelDownloader(_appDir, _log);
             _dl.Finished += () => Dispatcher.BeginInvoke(new Action(Done));
             _go.Content = "停止";
-            _status.Foreground = SB(CTextHint);
+            _status.Fg(K.TextHint);
             _status.Text = "正在连接…";
             _lastDone = 0;
             _speed = 0;
@@ -104,7 +104,7 @@ namespace VideoMixApp
             if (dl != null && dl.Succeeded)
             {
                 _bar.Value = 1000;
-                _status.Foreground = SB(CSuccessText);
+                _status.Fg(K.Keep);
                 _status.Text = "✓ 已完成";
                 var close = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
                 close.Tick += (s, e) =>
@@ -127,7 +127,7 @@ namespace VideoMixApp
             _go.Content = "继续下载";
             if (dl != null && dl.Error != null)
             {
-                _status.Foreground = SB(CAccentDeep);
+                _status.Fg(K.Warn);
                 _status.Text = dl.Error;
             }
             else

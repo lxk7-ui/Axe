@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -237,24 +237,13 @@ namespace VideoMixApp
         private static readonly Geometry DriveGeo = Geo(IconDrive);
         private static readonly Geometry FileGeo = Geo(IconFile);
         private static readonly Geometry VideoGeo = Geo(IconVideo);
-        private static readonly Brush FolderBrush = SB(Color.FromRgb(240, 176, 60));
-        private static readonly Brush DriveBrush = SB(CPrimary);
-        private static readonly Brush FileBrush = SB(CTextHint);
-        private static readonly Brush VideoBrush = SB(Color.FromRgb(120, 150, 190));
-        private static readonly Brush MainBrush = SB(CTextMain);
-        private static readonly Brush SubBrush = SB(CTextSub);
-        private static readonly Brush HintBrush = SB(CTextHint);
-        private static readonly Brush MarkBrush = SB(CAccentDeep);
-        private static readonly Brush DoneBrush = SB(CSuccessText);
-        private static readonly Brush DoneBack = SB(26, 53, 179, 126);
-        private static readonly Brush WarnBack = SB(30, 255, 138, 31);
         private static readonly string[] VideoExt = { ".mp4", ".mov", ".m4v", ".mkv", ".avi", ".flv", ".wmv", ".ts", ".webm", ".mpg", ".mpeg" };
 
         private readonly Path _icon = new Path();
         private readonly TextBlock _name = new TextBlock();
         private readonly TextBlock _detail = new TextBlock();
         private readonly TextBlock _right = new TextBlock();
-        private readonly Border _badge = new Border();
+        private readonly Chamfer _badge = new Chamfer { Cut = 4.0, Corners = Cuts.TopLeft, BorderThickness = 1.0 };
         private readonly TextBlock _badgeText = new TextBlock();
 
         public PickerRow()
@@ -263,8 +252,7 @@ namespace VideoMixApp
             ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
             ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            _badge.CornerRadius = new CornerRadius(5.0);
-            _badge.Padding = new Thickness(6.0, 1.0, 6.0, 1.0);
+            _badge.Padding = new Thickness(6.0, 1.0, 6.0, 2.0);
             _badge.Margin = new Thickness(10.0, 0.0, 0.0, 0.0);
             _badge.VerticalAlignment = VerticalAlignment.Center;
             _badgeText.FontSize = 11.0;
@@ -279,13 +267,13 @@ namespace VideoMixApp
             _name.FontSize = 13.0;
             _name.TextTrimming = TextTrimming.CharacterEllipsis;
             _detail.FontSize = 11.5;
-            _detail.Foreground = HintBrush;
+            _detail.Fg(K.TextHint);
             _detail.TextTrimming = TextTrimming.CharacterEllipsis;
             _detail.Margin = new Thickness(0.0, 1.0, 0.0, 0.0);
             texts.Children.Add(_name);
             texts.Children.Add(_detail);
             _right.FontSize = 11.5;
-            _right.Foreground = HintBrush;
+            _right.Fg(K.TextHint);
             _right.VerticalAlignment = VerticalAlignment.Center;
             _right.Margin = new Thickness(12.0, 0.0, 0.0, 0.0);
             // Fixed minimum so the 已统一/未统一 badges line up in one column.
@@ -313,23 +301,23 @@ namespace VideoMixApp
             {
                 case PickerKind.Drive:
                     _icon.Data = DriveGeo;
-                    _icon.Fill = DriveBrush;
+                    _icon.Fill(K.Accent);
                     break;
                 case PickerKind.Folder:
                     _icon.Data = FolderGeo;
-                    _icon.Fill = FolderBrush;
+                    _icon.Fill(K.Folder);
                     break;
                 case PickerKind.File:
                     bool video = Array.IndexOf(VideoExt, (System.IO.Path.GetExtension(e.Name) ?? "").ToLowerInvariant()) >= 0;
                     _icon.Data = video ? VideoGeo : FileGeo;
-                    _icon.Fill = video ? VideoBrush : FileBrush;
+                    _icon.Fill(video ? K.Video : K.TextHint);
                     break;
                 default:
                     _icon.Data = null;
                     break;
             }
             _icon.Visibility = e.Kind == PickerKind.Info ? Visibility.Collapsed : Visibility.Visible;
-            _name.Foreground = e.Kind == PickerKind.Info ? HintBrush : (e.Kind == PickerKind.File ? SubBrush : MainBrush);
+            _name.Fg(e.Kind == PickerKind.Info ? K.TextHint : (e.Kind == PickerKind.File ? K.TextSub : K.Text));
             _name.Inlines.Clear();
             if (e.Highlight == null || e.Highlight.Count == 0)
             {
@@ -348,7 +336,7 @@ namespace VideoMixApp
                     if (mark[start])
                     {
                         run.FontWeight = FontWeights.Bold;
-                        run.Foreground = MarkBrush;
+                        run.SetResourceReference(TextElement.ForegroundProperty, K.Accent);
                     }
                     _name.Inlines.Add(run);
                     start = end;
@@ -358,8 +346,9 @@ namespace VideoMixApp
             _detail.Visibility = string.IsNullOrEmpty(e.Detail) ? Visibility.Collapsed : Visibility.Visible;
             _badge.Visibility = string.IsNullOrEmpty(e.Badge) ? Visibility.Collapsed : Visibility.Visible;
             _badgeText.Text = e.Badge ?? "";
-            _badgeText.Foreground = e.BadgeWarn ? MarkBrush : DoneBrush;
-            _badge.Background = e.BadgeWarn ? WarnBack : DoneBack;
+            string tone = e.BadgeWarn ? K.Warn : K.Keep;
+            _badgeText.Fg(tone);
+            _badge.Bg(K.Soft(tone)).Bd(K.Edge(tone));
             _right.Text = e.Right ?? "";
             ToolTip = e.Kind == PickerKind.Info ? null : e.FullPath;
         }
@@ -440,14 +429,19 @@ namespace VideoMixApp
             get { return _selectedPath; }
         }
 
-        public FolderPicker(string initialPath) : this(initialPath, null, null)
+        public FolderPicker(string initialPath) : this(initialPath, null, null, 0)
         {
         }
 
-        // unifyCacheDir / unifyMark: the 规格统一 record and mark of the chosen ratio (see UnifyRecord).
-        public FolderPicker(string initialPath, string unifyCacheDir, string unifyMark)
+        public FolderPicker(string initialPath, string unifyCacheDir, string unifyMark) : this(initialPath, unifyCacheDir, unifyMark, 0)
         {
-            if (unifyCacheDir != null) _record = Task.Factory.StartNew(() => UnifyRecord.Load(unifyCacheDir, unifyMark));
+        }
+
+        // unifyCacheDir / unifyMark: the 规格统一 record and mark of the chosen ratio (see UnifyRecord);
+        // floorKbps: the bitrate floor clips are raised to (v2.7.0), 0 = none.
+        public FolderPicker(string initialPath, string unifyCacheDir, string unifyMark, int floorKbps)
+        {
+            if (unifyCacheDir != null) _record = Task.Factory.StartNew(() => UnifyRecord.Load(unifyCacheDir, unifyMark, floorKbps));
             _checkTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
             _checkTimer.Tick += (s, e) => CheckTarget();
             Rect work = SystemParameters.WorkArea;
@@ -509,17 +503,9 @@ namespace VideoMixApp
 
         private void BuildUI()
         {
-            var root = new Grid { Background = SB(1, 255, 255, 255) };
-            var frame = new Border
-            {
-                Margin = new Thickness(12.0),
-                Background = Brushes.White,
-                CornerRadius = new CornerRadius(18.0),
-                BorderBrush = SB(CBorder),
-                BorderThickness = new Thickness(1.0),
-                Effect = Shadow(Color.FromRgb(110, 126, 150), 24.0, 0.0, 0.35)
-            };
-            root.Children.Add(frame);
+            Ensure(this);
+            var root = new Grid { Background = SB(1, 0, 0, 0) };
+            Chamfer frame = DialogFrame(root);
             var g = new Grid();
             for (int i = 0; i < 6; i++) g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions[4].Height = new GridLength(1.0, GridUnitType.Star);
@@ -531,26 +517,26 @@ namespace VideoMixApp
             Style check = MainWindow.MakeCheckBoxStyle();
 
             // Row 0: title bar (drag to move).
-            var titleBar = new Border
-            {
-                Background = Brushes.White,
-                CornerRadius = new CornerRadius(18.0, 18.0, 0.0, 0.0),
-                Padding = new Thickness(18.0, 10.0, 10.0, 6.0)
-            };
+            var titleBar = new Border { Padding = new Thickness(18.0, 10.0, 10.0, 8.0), Margin = new Thickness(0.0, 0.0, 0.0, 8.0) }.Bg(K.Clear);
             var tg = new Grid();
             tg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
             tg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var titleStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            titleStack.Children.Add(MakeIcon(IconFolder, SB(Color.FromRgb(240, 176, 60)), 18.0));
+            titleStack.Children.Add(MakeIcon(IconFolder, K.Folder, 18.0));
             titleStack.Children.Add(new TextBlock
             {
                 Text = "选择文件夹",
-                FontSize = 14.0,
+                FontSize = 14.5,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = SB(CTextMain),
                 Margin = new Thickness(9.0, 0.0, 0.0, 0.0),
                 VerticalAlignment = VerticalAlignment.Center
-            });
+            }.Fg(K.Text));
+            // Hairline under the title with a lit segment, as in the main window.
+            var under = new Grid { Height = 1.0, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(-2.0, 0.0, 6.0, -8.0) };
+            under.Children.Add(new Border().Bg(K.Line));
+            under.Children.Add(new Border { Width = 90.0, HorizontalAlignment = HorizontalAlignment.Left }.Bg(K.Accent));
+            Grid.SetColumnSpan(under, 2);
+            tg.Children.Add(under);
             Button close = MainWindow.MakeWinButton(IconClose, true);
             close.Click += (s, e) => DialogResult = false;
             Grid.SetColumn(close, 1);
@@ -616,19 +602,18 @@ namespace VideoMixApp
             };
             _search.TextChanged += OnSearchTextChanged;
             _search.PreviewKeyDown += OnSearchKey;
-            Path searchIcon = MakeIcon(IconSearch, SB(CTextHint), 16.0);
+            Path searchIcon = MakeIcon(IconSearch, K.TextHint, 16.0);
             searchIcon.HorizontalAlignment = HorizontalAlignment.Left;
             searchIcon.Margin = new Thickness(12.0, 0.0, 0.0, 0.0);
             searchIcon.IsHitTestVisible = false;
             _hint = new TextBlock
             {
-                Foreground = SB(CTextHint),
                 FontSize = 13.0,
                 IsHitTestVisible = false,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(36.0, 0.0, 30.0, 0.0),
                 TextTrimming = TextTrimming.CharacterEllipsis
-            };
+            }.Fg(K.TextHint);
             _clearBtn = new Button
             {
                 Width = 24.0,
@@ -639,8 +624,8 @@ namespace VideoMixApp
                 Visibility = Visibility.Collapsed,
                 ToolTip = "清除搜索（Esc）",
                 Cursor = Cursors.Hand,
-                Template = MainWindow.ButtonTpl(Brushes.Transparent, SB(CWinHover), SB(CBorder), Brushes.Transparent, null, null, new CornerRadius(12.0)),
-                Content = new TextBlock { Text = "×", FontSize = 15.0, Foreground = SB(CTextSub), Margin = new Thickness(0.0, -2.0, 0.0, 0.0) }
+                Template = MainWindow.ButtonTpl(K.Clear, K.Panel3, K.AccentSoft, null, null, 5.0),
+                Content = new Path { Data = Geo(IconClose), StrokeThickness = 1.6, Width = 10.0, Height = 10.0, Stretch = Stretch.Uniform }.Stroke(K.TextSub)
             };
             _clearBtn.Click += (s, e) =>
             {
@@ -654,16 +639,15 @@ namespace VideoMixApp
             Grid.SetColumn(host, 0);
             sr.Children.Add(host);
 
-            var seg = new Border
+            var seg = new Chamfer
             {
-                CornerRadius = new CornerRadius(10.0),
-                Background = SB(CInputBg),
-                BorderBrush = SB(CBorder),
-                BorderThickness = new Thickness(1.0),
+                Cut = 7.0,
+                Corners = Cuts.TopRight,
+                BorderThickness = 1.0,
                 Margin = new Thickness(8.0, 0.0, 0.0, 0.0),
                 Padding = new Thickness(3.0),
                 Height = 34.0
-            };
+            }.Bg(K.Panel2).Bd(K.Line);
             var segPanel = new StackPanel { Orientation = Orientation.Horizontal };
             Style segStyle = SegmentStyle();
             _fuzzyBtn = new ToggleButton
@@ -701,14 +685,14 @@ namespace VideoMixApp
                 Style = check,
                 IsChecked = _lastRecursive,
                 Margin = new Thickness(0.0, 0.0, 18.0, 0.0),
-                Content = new TextBlock { Text = "包含子文件夹", FontSize = 12.5, Foreground = SB(CTextMain) },
+                Content = new TextBlock { Text = "包含子文件夹", FontSize = 12.5 }.Fg(K.Text),
                 ToolTip = "勾选：搜索当前位置下的所有层级；取消：只筛选当前这一层"
             };
             _filesCheck = new CheckBox
             {
                 Style = check,
                 IsChecked = _lastShowFiles,
-                Content = new TextBlock { Text = "显示文件", FontSize = 12.5, Foreground = SB(CTextMain) },
+                Content = new TextBlock { Text = "显示文件", FontSize = 12.5 }.Fg(K.Text),
                 ToolTip = "在列表和搜索结果中同时显示文件（只用于查看，选择的仍是文件夹）"
             };
             _subCheck.Click += (s, e) => OptionsChanged();
@@ -716,12 +700,11 @@ namespace VideoMixApp
             _status = new TextBlock
             {
                 FontSize = 12.0,
-                Foreground = SB(CTextHint),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(12.0, 0.0, 6.0, 0.0)
-            };
+            }.Fg(K.TextHint);
             _stopBtn = new Button
             {
                 Content = "停止",
@@ -744,15 +727,14 @@ namespace VideoMixApp
             g.Children.Add(opt);
 
             // Row 4: the list. It sits in a star row, so it gets a bounded height and scrolls.
-            var listBorder = new Border
+            var listBorder = new Chamfer
             {
-                BorderBrush = SB(CBorder),
-                BorderThickness = new Thickness(1.0),
-                CornerRadius = new CornerRadius(12.0),
+                BorderThickness = 1.0,
+                Cut = 10.0,
+                Corners = Cuts.TopLeft | Cuts.BottomRight,
                 Margin = new Thickness(16.0, 0.0, 16.0, 0.0),
-                Padding = new Thickness(0.0, 4.0, 2.0, 4.0),
-                Background = Brushes.White
-            };
+                Padding = new Thickness(0.0, 4.0, 2.0, 4.0)
+            }.Bg(K.Panel2).Bd(K.Line);
             _list = new ListBox
             {
                 BorderThickness = new Thickness(0.0),
@@ -779,11 +761,10 @@ namespace VideoMixApp
             // Row 5: footer with the chosen path and the buttons.
             var foot = new Border
             {
-                BorderBrush = SB(CBorder),
                 BorderThickness = new Thickness(0.0, 1.0, 0.0, 0.0),
                 Padding = new Thickness(18.0, 12.0, 16.0, 14.0),
                 Margin = new Thickness(0.0, 12.0, 0.0, 0.0)
-            };
+            }.Bd(K.Line);
             var fg = new Grid();
             fg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
             fg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -806,7 +787,7 @@ namespace VideoMixApp
             var cancel = new Button { Content = "取消", Width = 84.0, Height = 36.0, FontSize = 13.0, Margin = new Thickness(0.0, 0.0, 10.0, 0.0), Style = secondary };
             cancel.Click += (s, e) => DialogResult = false;
             var ok = new Button { Width = 96.0, Height = 36.0, Style = ConfirmStyle() };
-            ok.Content = new TextBlock { Text = "确定", FontSize = 13.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White };
+            ok.Content = new TextBlock { Text = "确定", FontSize = 13.5, FontWeight = FontWeights.SemiBold };
             ok.ToolTip = "选择当前选中的文件夹（Ctrl+Enter）";
             ok.Click += (s, e) => Confirm();
             Grid.SetColumn(selPanel, 0);
@@ -824,7 +805,7 @@ namespace VideoMixApp
         {
             var b = new Button { Height = 32.0, Padding = new Thickness(10.0, 0.0, 12.0, 0.0), Margin = new Thickness(0.0, 0.0, 8.0, 0.0), Style = style, FontSize = 12.5 };
             var p = new StackPanel { Orientation = Orientation.Horizontal };
-            p.Children.Add(MakeIcon(icon, SB(CPrimary), 14.0));
+            p.Children.Add(MakeIcon(icon, K.Accent, 14.0));
             p.Children.Add(new TextBlock { Text = text, Margin = new Thickness(6.0, 0.0, 0.0, 0.0), VerticalAlignment = VerticalAlignment.Center });
             b.Content = p;
             return b;
@@ -832,35 +813,32 @@ namespace VideoMixApp
 
         private static Style ConfirmStyle()
         {
-            var s = new Style(typeof(Button));
-            s.Setters.Add(new Setter(FrameworkElement.CursorProperty, Cursors.Hand));
-            s.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-            s.Setters.Add(new Setter(Control.TemplateProperty, MainWindow.ButtonTpl(
-                SB(CPrimary), SB(Color.FromRgb(38, 94, 148)), SB(CPrimaryDeep), SB(Color.FromRgb(214, 220, 228)), null, null, new CornerRadius(10.0))));
-            return s;
+            return MainWindow.MakePrimaryButtonStyle();
         }
 
+        // 模糊 / 精确: cut-corner keys inside one frame, the chosen one filled.
         private static Style SegmentStyle()
         {
-            var bd = new FrameworkElementFactory(typeof(Border), "sb");
-            bd.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-            bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(7.0));
-            bd.SetValue(Border.PaddingProperty, new Thickness(14.0, 0.0, 14.0, 0.0));
+            var bd = new FrameworkElementFactory(typeof(Chamfer), "sb");
+            bd.SetResourceReference(Chamfer.BackgroundProperty, K.Clear);
+            bd.SetValue(Chamfer.BorderThicknessProperty, 0.0);
+            bd.SetValue(Chamfer.CutProperty, 5.0);
+            bd.SetValue(Chamfer.CornersProperty, Cuts.TopRight);
+            bd.SetValue(Chamfer.PaddingProperty, new Thickness(14.0, 0.0, 14.0, 0.0));
             var cp = new FrameworkElementFactory(typeof(ContentPresenter));
             cp.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
             cp.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
             bd.AppendChild(cp);
-            var tpl = new ControlTemplate(typeof(ToggleButton));
-            tpl.VisualTree = bd;
+            var tpl = new ControlTemplate(typeof(ToggleButton)) { VisualTree = bd };
             var over = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-            over.Setters.Add(new Setter(Border.BackgroundProperty, SB(CWinHover), "sb"));
+            over.Setters.Add(DynSetter(Chamfer.BackgroundProperty, K.Panel3, "sb"));
             tpl.Triggers.Add(over);
             var on = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
-            on.Setters.Add(new Setter(Border.BackgroundProperty, SB(CPrimary), "sb"));
-            on.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+            on.Setters.Add(DynSetter(Chamfer.BackgroundProperty, K.Accent, "sb"));
+            on.Setters.Add(DynSetter(Control.ForegroundProperty, K.OnAccent));
             tpl.Triggers.Add(on);
             var s = new Style(typeof(ToggleButton));
-            s.Setters.Add(new Setter(Control.ForegroundProperty, SB(CTextSub)));
+            s.Setters.Add(DynSetter(Control.ForegroundProperty, K.TextSub));
             s.Setters.Add(new Setter(Control.FontSizeProperty, 12.5));
             s.Setters.Add(new Setter(FrameworkElement.CursorProperty, Cursors.Hand));
             s.Setters.Add(new Setter(UIElement.FocusableProperty, false));
@@ -868,26 +846,37 @@ namespace VideoMixApp
             return s;
         }
 
-        private static Style ItemStyle()
+        // List rows: a bar on the left lights up for the selected row.
+        internal static Style ItemStyle()
         {
-            var ib = new FrameworkElementFactory(typeof(Border), "ib");
-            ib.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-            ib.SetValue(Border.BorderBrushProperty, Brushes.Transparent);
-            ib.SetValue(Border.BorderThicknessProperty, new Thickness(1.0));
-            ib.SetValue(Border.CornerRadiusProperty, new CornerRadius(7.0));
-            ib.SetValue(Border.PaddingProperty, new Thickness(10.0, 3.0, 12.0, 3.0));
-            ib.SetValue(FrameworkElement.MarginProperty, new Thickness(6.0, 0.5, 4.0, 0.5));
+            var root = new FrameworkElementFactory(typeof(Grid));
+            root.SetValue(FrameworkElement.MarginProperty, new Thickness(6.0, 0.5, 4.0, 0.5));
+            var ib = new FrameworkElementFactory(typeof(Chamfer), "ib");
+            ib.SetResourceReference(Chamfer.BackgroundProperty, K.Clear);
+            ib.SetResourceReference(Chamfer.BorderBrushProperty, K.Clear);
+            ib.SetValue(Chamfer.BorderThicknessProperty, 1.0);
+            ib.SetValue(Chamfer.CutProperty, 7.0);
+            ib.SetValue(Chamfer.CornersProperty, Cuts.BottomRight);
+            ib.SetValue(Chamfer.PaddingProperty, new Thickness(10.0, 3.0, 12.0, 3.0));
             var cp = new FrameworkElementFactory(typeof(ContentPresenter));
             cp.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
             ib.AppendChild(cp);
-            var tpl = new ControlTemplate(typeof(ListBoxItem));
-            tpl.VisualTree = ib;
+            root.AppendChild(ib);
+            var bar = new FrameworkElementFactory(typeof(Border), "bar");
+            bar.SetValue(FrameworkElement.WidthProperty, 3.0);
+            bar.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+            bar.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 5.0, 0.0, 5.0));
+            bar.SetResourceReference(Border.BackgroundProperty, K.Accent);
+            bar.SetValue(UIElement.VisibilityProperty, Visibility.Hidden);
+            root.AppendChild(bar);
+            var tpl = new ControlTemplate(typeof(ListBoxItem)) { VisualTree = root };
             var over = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-            over.Setters.Add(new Setter(Border.BackgroundProperty, SB(CWinHover), "ib"));
+            over.Setters.Add(DynSetter(Chamfer.BackgroundProperty, K.Panel3, "ib"));
             tpl.Triggers.Add(over);
             var sel = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
-            sel.Setters.Add(new Setter(Border.BackgroundProperty, SB(36, 46, 108, 168), "ib"));
-            sel.Setters.Add(new Setter(Border.BorderBrushProperty, SB(110, 46, 108, 168), "ib"));
+            sel.Setters.Add(DynSetter(Chamfer.BackgroundProperty, K.AccentSoft, "ib"));
+            sel.Setters.Add(DynSetter(Chamfer.BorderBrushProperty, K.AccentLine, "ib"));
+            sel.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "bar"));
             tpl.Triggers.Add(sel);
             var s = new Style(typeof(ListBoxItem));
             s.Setters.Add(new Setter(Control.TemplateProperty, tpl));
@@ -907,27 +896,39 @@ namespace VideoMixApp
             return new DataTemplate { VisualTree = row };
         }
 
-        // A wider, rounded scrollbar that is easy to grab; the thumb turns blue while dragging.
-        private static Style ScrollBarStyle()
+        // A slim, square scrollbar that is still easy to grab; the thumb lights up while dragging. Only
+        // vertical bars take it (a horizontal one keeps the system look), and a bar with nothing to
+        // scroll shows nothing (v2.7.1: lists that always reserve the bar's room showed a full-length
+        // thumb). dark: on the 运行日志 background (always dark, whatever the 背景色).
+        internal static Style ScrollBarStyle(bool dark = false)
         {
-            const string xaml =
+            string track = dark ? "{DynamicResource ax.logBg}" : "{DynamicResource ax.panel2}";
+            string thumb = dark ? "{DynamicResource ax.logDim}" : "{DynamicResource ax.lineHi}";
+            string hover = "{DynamicResource ax.textHint}";
+            string xaml =
                 "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='ScrollBar'>" +
-                "<Setter Property='Width' Value='14'/><Setter Property='MinWidth' Value='14'/>" +
+                "<Style.Triggers><Trigger Property='Orientation' Value='Vertical'>" +
+                "<Setter Property='Width' Value='12'/><Setter Property='MinWidth' Value='12'/>" +
                 "<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ScrollBar'>" +
                 "<Grid Background='Transparent'>" +
-                "<Border Background='#EEF2F7' CornerRadius='6' Margin='3,2'/>" +
+                "<Border x:Name='bg' Background='" + track + "' Margin='3,2'/>" +
                 "<Track x:Name='PART_Track' IsDirectionReversed='True' Margin='3,2'>" +
                 "<Track.DecreaseRepeatButton><RepeatButton Command='ScrollBar.PageUpCommand' Focusable='False' IsTabStop='False'>" +
                 "<RepeatButton.Template><ControlTemplate TargetType='RepeatButton'><Border Background='Transparent'/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>" +
                 "<Track.Thumb><Thumb MinHeight='36'><Thumb.Template><ControlTemplate TargetType='Thumb'>" +
-                "<Border x:Name='tb' Background='#C2CBD7' CornerRadius='4'/>" +
+                "<Border x:Name='tb' Background='" + thumb + "'/>" +
                 "<ControlTemplate.Triggers>" +
-                "<Trigger Property='IsMouseOver' Value='True'><Setter TargetName='tb' Property='Background' Value='#97A5B7'/></Trigger>" +
-                "<Trigger Property='IsDragging' Value='True'><Setter TargetName='tb' Property='Background' Value='#2E6CA8'/></Trigger>" +
+                "<Trigger Property='IsMouseOver' Value='True'><Setter TargetName='tb' Property='Background' Value='" + hover + "'/></Trigger>" +
+                "<Trigger Property='IsDragging' Value='True'><Setter TargetName='tb' Property='Background' Value='{DynamicResource ax.accent}'/></Trigger>" +
                 "</ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>" +
                 "<Track.IncreaseRepeatButton><RepeatButton Command='ScrollBar.PageDownCommand' Focusable='False' IsTabStop='False'>" +
                 "<RepeatButton.Template><ControlTemplate TargetType='RepeatButton'><Border Background='Transparent'/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>" +
-                "</Track></Grid></ControlTemplate></Setter.Value></Setter></Style>";
+                "</Track></Grid>" +
+                "<ControlTemplate.Triggers><Trigger Property='Maximum' Value='0'>" +
+                "<Setter TargetName='bg' Property='Visibility' Value='Hidden'/><Setter TargetName='PART_Track' Property='Visibility' Value='Hidden'/>" +
+                "</Trigger></ControlTemplate.Triggers>" +
+                "</ControlTemplate></Setter.Value></Setter>" +
+                "</Trigger></Style.Triggers></Style>";
             return (Style)XamlReader.Parse(xaml);
         }
 
@@ -951,7 +952,7 @@ namespace VideoMixApp
         private void SetStatus(string text, bool warn)
         {
             _status.Text = text ?? "";
-            _status.Foreground = SB(warn ? CAccentDeep : CTextHint);
+            _status.Fg(warn ? K.Warn : K.TextHint);
             _status.ToolTip = string.IsNullOrEmpty(text) ? null : text;
         }
 
@@ -1111,6 +1112,10 @@ namespace VideoMixApp
                     break;
                 case UnifyRecord.State.Failed:
                     e.Badge = "上次失败";
+                    e.BadgeWarn = true;
+                    break;
+                case UnifyRecord.State.LowRate:
+                    e.Badge = "码率低";
                     e.BadgeWarn = true;
                     break;
                 default:
@@ -1467,17 +1472,17 @@ namespace VideoMixApp
             if (e != null)
             {
                 _selText.Text = (e.Kind == PickerKind.File ? "将选择该文件所在文件夹：" : "将选择：") + TargetOf(e);
-                _selText.Foreground = SB(CTextMain);
+                _selText.Fg(K.Text);
             }
             else if (_currentDir != ThisPC)
             {
                 _selText.Text = "未选中（确定将使用当前位置：" + _currentDir + "）";
-                _selText.Foreground = SB(CTextHint);
+                _selText.Fg(K.TextHint);
             }
             else
             {
                 _selText.Text = "请先选择一个驱动器或文件夹";
-                _selText.Foreground = SB(CTextHint);
+                _selText.Fg(K.TextHint);
             }
             _selText.ToolTip = _selText.Text;
             if (_record != null)
@@ -1526,7 +1531,7 @@ namespace VideoMixApp
             if (string.IsNullOrEmpty(result) || !Directory.Exists(result))
             {
                 _selText.Text = "请先选择一个文件夹或驱动器";
-                _selText.Foreground = SB(CAccentDeep);
+                _selText.Fg(K.Warn);
                 return;
             }
             _selectedPath = result.Length > 3 ? result.TrimEnd('\\') : result;

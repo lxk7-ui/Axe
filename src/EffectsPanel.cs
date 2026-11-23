@@ -177,8 +177,7 @@ namespace VideoMixApp
             _canvas.Children.Add(_bg);
             _sampleTag = new Border
             {
-                Background = SB(130, 0, 0, 0),
-                CornerRadius = new CornerRadius(4.0),
+                Background = SB(150, 0, 0, 0),
                 Padding = new Thickness(6.0, 2.0, 6.0, 2.0),
                 Child = new TextBlock { Text = "示例画面", FontSize = 11.0, Foreground = Brushes.White },
                 IsHitTestVisible = false,
@@ -193,17 +192,16 @@ namespace VideoMixApp
             _canvas.Children.Add(_stickerBox);
             _sub = new OutlinedText { Text = SampleText, Cursor = Cursors.SizeAll, ToolTip = "拖动调整位置，滚轮调整大小" };
             _canvas.Children.Add(_sub);
+            // The preview as a monitor: dark frame, hairline border, lit corner brackets around it.
             _phone = new Border
             {
                 Child = _canvas,
-                CornerRadius = new CornerRadius(12.0),
-                Background = new LinearGradientBrush(Color.FromRgb(74, 84, 100), Color.FromRgb(32, 36, 44), 90),
-                BorderBrush = SB(CBorder),
                 BorderThickness = new Thickness(1.0),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Effect = Shadow(Color.FromRgb(150, 165, 185), 12.0, 2.0, 0.45)
-            };
-            left.Children.Add(_phone);
+                HorizontalAlignment = HorizontalAlignment.Center
+            }.Bg(K.Frame).Bd(K.LineHi);
+            var monitor = new Chamfer { Cut = 0.0, Corners = Cuts.None, BorderThickness = 0.0, Padding = new Thickness(4.0), AccentSize = 12.0, HorizontalAlignment = HorizontalAlignment.Center, Child = _phone }.Bg(K.Clear);
+            monitor.SetResourceReference(Chamfer.AccentProperty, K.Accent);
+            left.Children.Add(monitor);
             _stickerSlider = new Slider { Minimum = 0.08, Maximum = 0.7, Style = sliderStyle };
             _subSlider = new Slider { Minimum = 0.035, Maximum = 0.11, Style = sliderStyle };
             left.Children.Add(SliderRow("贴纸", _stickerSlider));
@@ -222,7 +220,7 @@ namespace VideoMixApp
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             Style seg = SegmentStyle();
-            var tabs = new Border { Background = SB(Color.FromRgb(236, 241, 247)), CornerRadius = new CornerRadius(10.0), Padding = new Thickness(3.0), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0.0, 0.0, 0.0, 8.0) };
+            var tabs = new Border { HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0.0, 0.0, 0.0, 8.0) };
             var tabRow = new StackPanel { Orientation = Orientation.Horizontal };
             _tabFilter = new ToggleButton { Content = "滤镜", Style = seg, IsChecked = true };
             _tabSticker = new ToggleButton { Content = "贴纸", Style = seg };
@@ -233,6 +231,7 @@ namespace VideoMixApp
             tabs.Child = tabRow;
             right.Children.Add(tabs);
             _scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = _filterWrap };
+            _scroll.Resources.Add(typeof(ScrollBar), FolderPicker.ScrollBarStyle());
             Grid.SetRow(_scroll, 1);
             right.Children.Add(_scroll);
 
@@ -241,11 +240,11 @@ namespace VideoMixApp
             _strengthRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             _strengthRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
             _strengthRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44.0) });
-            _strengthRow.Children.Add(new TextBlock { Text = "强度", FontSize = 12.5, Foreground = SB(CTextSub), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0.0, 0.0, 8.0, 0.0) });
+            _strengthRow.Children.Add(new TextBlock { Text = "强度", FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0.0, 0.0, 8.0, 0.0) }.Fg(K.TextSub));
             _strengthSlider = new Slider { Minimum = 0.1, Maximum = 1.0, SmallChange = 0.05, LargeChange = 0.1, TickFrequency = 0.05, IsSnapToTickEnabled = true, Value = 1.0, Style = sliderStyle, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_strengthSlider, 1);
             _strengthRow.Children.Add(_strengthSlider);
-            _strengthText = new TextBlock { Text = "100%", FontSize = 12.5, Foreground = SB(CTextMain), TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            _strengthText = new TextBlock { Text = "100%", FontSize = 13.0, FontFamily = TechFont, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center }.Fg(K.Accent);
             Grid.SetColumn(_strengthText, 2);
             _strengthRow.Children.Add(_strengthText);
             _strengthRow.MouseWheel += (s, e) =>
@@ -257,7 +256,7 @@ namespace VideoMixApp
             right.Children.Add(_strengthRow);
 
             var speedRow = new DockPanel { Margin = new Thickness(0.0, 10.0, 0.0, 0.0) };
-            var speedLabel = new TextBlock { Text = "变速", FontSize = 12.5, Foreground = SB(CTextSub), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0.0, 0.0, 8.0, 0.0) };
+            var speedLabel = new TextBlock { Text = "变速", FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0.0, 0.0, 8.0, 0.0) }.Fg(K.TextSub);
             DockPanel.SetDock(speedLabel, Dock.Left);
             speedRow.Children.Add(speedLabel);
             var pills = new UniformGrid { Rows = 1 };
@@ -270,11 +269,13 @@ namespace VideoMixApp
                 pills.Children.Add(b);
             }
             speedRow.Children.Add(pills);
+            // v2.7.1: in a narrow window the labels get smaller together ("1.25x" filled its pill).
+            pills.SizeChanged += (s, e) => FitSpeedLabels(e.NewSize.Width);
             Grid.SetRow(speedRow, 3);
             right.Children.Add(speedRow);
 
             _subCheck = new CheckBox { Style = MainWindow.MakeCheckBoxStyle(), Margin = new Thickness(0.0, 10.0, 0.0, 2.0) };
-            _subCheck.Content = new TextBlock { Text = "识别语音配字幕", FontSize = 12.5, Foreground = SB(CTextMain), VerticalAlignment = VerticalAlignment.Center };
+            _subCheck.Content = new TextBlock { Text = "识别语音配字幕", FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center }.Fg(K.Text);
             _subCheck.Checked += (s, e) => SubtitleToggled(true);
             _subCheck.Unchecked += (s, e) => SubtitleToggled(false);
             Grid.SetRow(_subCheck, 4);
@@ -323,6 +324,28 @@ namespace VideoMixApp
         public EffectOptions Options
         {
             get { return _fx; }
+        }
+
+        // Width of the widest 变速 label in bold (the chosen one) at the normal 12 px; measured once.
+        private double _speedNeed;
+
+        private void FitSpeedLabels(double width)
+        {
+            if (_speedButtons.Count == 0 || !(width > 0.0)) return;
+            if (_speedNeed <= 0.0)
+            {
+                foreach (var b in _speedButtons)
+                {
+                    var t = new TextBlock { Text = b.Content as string ?? "", FontSize = 12.0, FontWeight = FontWeights.SemiBold, FontFamily = b.FontFamily };
+                    t.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                    _speedNeed = Math.Max(_speedNeed, t.DesiredSize.Width);
+                }
+            }
+            // A pill's share of the row, less the 3 px gap, its border and 3 px inside on each side.
+            // Half-pixel steps, so resizing does not set a new size at every pixel.
+            double room = width / _speedButtons.Count - 3.0 - 2.0 - 6.0;
+            double size = room >= _speedNeed ? 12.0 : Math.Max(9.0, Math.Floor(24.0 * room / _speedNeed) / 2.0);
+            foreach (var b in _speedButtons) b.FontSize = size;
         }
 
         // The settings were loaded or changed outside the panel.
@@ -483,15 +506,14 @@ namespace VideoMixApp
             var none = new Grid { Width = size, Height = size };
             var slash = new Path
             {
-                Data = Geo("M12,3 A9,9 0 1 0 12,21 A9,9 0 1 0 12,3 Z M5.6,5.6 L18.4,18.4"),
-                Stroke = SB(CTextHint),
+                Data = Geo("M8,3 H16 L21,8 V16 L16,21 H8 L3,16 V8 Z M6,6 L18,18"),
                 StrokeThickness = 1.6,
                 Width = 26,
                 Height = 26,
                 Stretch = Stretch.Uniform,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
-            };
+            }.Stroke(K.TextHint);
             none.Children.Add(slash);
             AddTile(_stickerWrap, _stickerTiles, "", "无", none, size, () => PickSticker(""));
             if (_stickers.Count > 0)
@@ -518,32 +540,28 @@ namespace VideoMixApp
         private void AddTile(WrapPanel wrap, Dictionary<string, Border> map, string key, string label, UIElement picture, double width, Action click)
         {
             var stack = new StackPanel();
-            var frame = new Border { CornerRadius = new CornerRadius(7.0), ClipToBounds = true, Background = SB(Color.FromRgb(240, 243, 248)), Child = picture };
+            var frame = new Border { ClipToBounds = true, Child = picture }.Bg(K.Panel2);
             stack.Children.Add(frame);
             stack.Children.Add(new TextBlock
             {
                 Text = label,
                 FontSize = 11.5,
-                Foreground = SB(CTextSub),
                 TextAlignment = TextAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Width = width,
                 Margin = new Thickness(0.0, 3.0, 0.0, 0.0)
-            });
+            }.Fg(K.TextSub));
             var tile = new Border
             {
                 Child = stack,
                 Padding = new Thickness(3.0),
                 Margin = new Thickness(0.0, 0.0, 6.0, 6.0),
-                CornerRadius = new CornerRadius(9.0),
-                BorderThickness = new Thickness(2.0),
-                BorderBrush = Brushes.Transparent,
-                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(1.5),
                 Cursor = Cursors.Hand,
                 ToolTip = label
-            };
-            tile.MouseEnter += (s, e) => { if (!IsSelected(map, tile)) tile.BorderBrush = SB(90, 46, 108, 168); };
-            tile.MouseLeave += (s, e) => { if (!IsSelected(map, tile)) tile.BorderBrush = Brushes.Transparent; };
+            }.Bd(K.Clear).Bg(K.Clear);
+            tile.MouseEnter += (s, e) => { if (!IsSelected(map, tile)) tile.Bd(K.AccentLine); };
+            tile.MouseLeave += (s, e) => { if (!IsSelected(map, tile)) tile.Bd(K.Clear); };
             tile.MouseLeftButtonUp += (s, e) => click();
             map[key] = tile;
             wrap.Children.Add(tile);
@@ -571,8 +589,11 @@ namespace VideoMixApp
             foreach (var kv in map)
             {
                 bool on = string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase);
-                kv.Value.BorderBrush = on ? SB(CPrimary) : Brushes.Transparent;
-                kv.Value.Background = on ? SB(22, 46, 108, 168) : Brushes.Transparent;
+                kv.Value.Bd(on ? K.Accent : K.Clear);
+                kv.Value.Bg(on ? K.AccentSoft : K.Clear);
+                // The picked tile's name lights up too.
+                var label = ((StackPanel)kv.Value.Child).Children[1] as TextBlock;
+                if (label != null) label.Fg(on ? K.Accent : K.TextSub);
             }
         }
 
@@ -962,7 +983,10 @@ namespace VideoMixApp
             {
                 var pics = new BitmapSource[stickers.Count];
                 var tiles = new BitmapSource[stickers.Count];
-                Parallel.For(0, stickers.Count, new ParallelOptions { MaxDegreeOfParallelism = 4 }, i =>
+                // v2.8.1: 177 stickers; the first pictures (cached after) come from ffmpeg, as many at once
+                // as half the CPU threads, between 4 and 8.
+                int workers = Math.Max(4, Math.Min(8, Environment.ProcessorCount / 2));
+                Parallel.For(0, stickers.Count, new ParallelOptions { MaxDegreeOfParallelism = workers }, i =>
                 {
                     pics[i] = Decode(_renderer.StickerPicture(stickers[i], 128));
                     tiles[i] = Trim(pics[i]);
@@ -1114,63 +1138,101 @@ namespace VideoMixApp
             var g = new Grid { Margin = new Thickness(0.0, 8.0, 0.0, 0.0), Width = MaxW };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34.0) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
-            var t = new TextBlock { Text = label, FontSize = 12.0, Foreground = SB(CTextSub), VerticalAlignment = VerticalAlignment.Center };
+            var t = new TextBlock { Text = label, FontSize = 12.0, VerticalAlignment = VerticalAlignment.Center }.Fg(K.TextSub);
             Grid.SetColumn(slider, 1);
             g.Children.Add(t);
             g.Children.Add(slider);
             return g;
         }
 
+        // Hairline track, lit part in the accent colour, a diamond for the thumb.
         private static Style SliderStyle()
         {
             const string xaml =
                 "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Slider'>" +
                 "<Setter Property='Focusable' Value='False'/><Setter Property='Cursor' Value='Hand'/>" +
                 "<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Slider'>" +
-                "<Grid Height='20' Background='Transparent'><Border Height='4' CornerRadius='2' Background='#E3E9F1' VerticalAlignment='Center'/>" +
+                "<Grid Height='20' Background='Transparent'><Border Height='3' Background='{DynamicResource ax.panel3}' VerticalAlignment='Center'/>" +
                 "<Track x:Name='PART_Track'>" +
                 "<Track.DecreaseRepeatButton><RepeatButton Command='{x:Static Slider.DecreaseLarge}' Focusable='False'><RepeatButton.Template><ControlTemplate TargetType='RepeatButton'>" +
-                "<Border Height='4' CornerRadius='2' Background='#2E6CA8' VerticalAlignment='Center'/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>" +
+                "<Border Height='3' Background='{DynamicResource ax.startBg}' VerticalAlignment='Center'/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>" +
                 "<Track.IncreaseRepeatButton><RepeatButton Command='{x:Static Slider.IncreaseLarge}' Focusable='False'><RepeatButton.Template><ControlTemplate TargetType='RepeatButton'>" +
                 "<Border Background='Transparent'/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>" +
                 "<Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType='Thumb'>" +
-                "<Ellipse Width='16' Height='16' Fill='White' Stroke='#2E6CA8' StrokeThickness='2'/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>" +
+                "<Grid Width='18' Height='18' Background='Transparent'><Rectangle Width='11' Height='11' Fill='{DynamicResource ax.panel}' Stroke='{DynamicResource ax.accent}' StrokeThickness='2' RenderTransformOrigin='0.5,0.5'>" +
+                "<Rectangle.RenderTransform><RotateTransform Angle='45'/></Rectangle.RenderTransform></Rectangle></Grid>" +
+                "</ControlTemplate></Thumb.Template></Thumb></Track.Thumb>" +
                 "</Track></Grid></ControlTemplate></Setter.Value></Setter></Style>";
             return (Style)System.Windows.Markup.XamlReader.Parse(xaml);
         }
 
-        // Segmented switch (滤镜 / 贴纸, and the tabs of the right card).
+        // Angular tab (滤镜 / 贴纸, and the tabs of the right card): the picked one lit with an outline.
         internal static Style SegmentStyle()
         {
-            const string xaml =
-                "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='ToggleButton'>" +
-                "<Setter Property='Cursor' Value='Hand'/><Setter Property='Foreground' Value='#606E80'/><Setter Property='FontSize' Value='13'/><Setter Property='Focusable' Value='False'/>" +
-                "<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ToggleButton'>" +
-                "<Border x:Name='bd' Background='Transparent' CornerRadius='8' Padding='14,5,14,5'>" +
-                "<ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/></Border>" +
-                "<ControlTemplate.Triggers>" +
-                "<Trigger Property='IsMouseOver' Value='True'><Setter Property='Foreground' Value='#1F4E79'/></Trigger>" +
-                "<Trigger Property='IsChecked' Value='True'><Setter TargetName='bd' Property='Background' Value='White'/><Setter Property='Foreground' Value='#1F4E79'/>" +
-                "<Setter Property='FontWeight' Value='SemiBold'/>" +
-                "<Setter TargetName='bd' Property='Effect'><Setter.Value><DropShadowEffect Color='#96A5B9' BlurRadius='8' ShadowDepth='1' Opacity='0.35'/></Setter.Value></Setter></Trigger>" +
-                "</ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>";
-            return (Style)System.Windows.Markup.XamlReader.Parse(xaml);
+            var bd = new FrameworkElementFactory(typeof(Chamfer), "bd");
+            bd.SetResourceReference(Chamfer.BackgroundProperty, K.Clear);
+            bd.SetResourceReference(Chamfer.BorderBrushProperty, K.Clear);
+            bd.SetValue(Chamfer.BorderThicknessProperty, 1.0);
+            bd.SetValue(Chamfer.CutProperty, 7.0);
+            bd.SetValue(Chamfer.CornersProperty, Cuts.TopLeft);
+            bd.SetValue(Chamfer.PaddingProperty, new Thickness(14.0, 5.0, 14.0, 6.0));
+            bd.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 4.0, 0.0));
+            var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+            cp.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            cp.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            bd.AppendChild(cp);
+            var tpl = new ControlTemplate(typeof(ToggleButton)) { VisualTree = bd };
+            var over = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            over.Setters.Add(DynSetter(Chamfer.BackgroundProperty, K.Panel2, "bd"));
+            over.Setters.Add(DynSetter(Control.ForegroundProperty, K.Text));
+            tpl.Triggers.Add(over);
+            var on = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
+            on.Setters.Add(DynSetter(Chamfer.BackgroundProperty, K.AccentSoft, "bd"));
+            on.Setters.Add(DynSetter(Chamfer.BorderBrushProperty, K.AccentLine, "bd"));
+            on.Setters.Add(DynSetter(Control.ForegroundProperty, K.Accent));
+            on.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.SemiBold));
+            tpl.Triggers.Add(on);
+            var s = new Style(typeof(ToggleButton));
+            s.Setters.Add(new Setter(FrameworkElement.CursorProperty, Cursors.Hand));
+            s.Setters.Add(DynSetter(Control.ForegroundProperty, K.TextSub));
+            s.Setters.Add(new Setter(Control.FontSizeProperty, 13.0));
+            s.Setters.Add(new Setter(UIElement.FocusableProperty, false));
+            s.Setters.Add(new Setter(Control.TemplateProperty, tpl));
+            return s;
         }
 
+        // 变速 choices: small cut-corner keys, the picked one filled.
         private static Style PillStyle()
         {
-            const string xaml =
-                "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='ToggleButton'>" +
-                "<Setter Property='Cursor' Value='Hand'/><Setter Property='Foreground' Value='#22303C'/><Setter Property='FontSize' Value='12'/><Setter Property='Height' Value='28'/><Setter Property='Focusable' Value='False'/>" +
-                "<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ToggleButton'>" +
-                "<Border x:Name='bd' Background='#F4F7FB' BorderBrush='#E5EBF3' BorderThickness='1' CornerRadius='8'>" +
-                "<ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/></Border>" +
-                "<ControlTemplate.Triggers>" +
-                "<Trigger Property='IsMouseOver' Value='True'><Setter TargetName='bd' Property='BorderBrush' Value='#2E6CA8'/></Trigger>" +
-                "<Trigger Property='IsChecked' Value='True'><Setter TargetName='bd' Property='Background' Value='#2E6CA8'/><Setter TargetName='bd' Property='BorderBrush' Value='#2E6CA8'/>" +
-                "<Setter Property='Foreground' Value='White'/><Setter Property='FontWeight' Value='SemiBold'/></Trigger>" +
-                "</ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>";
-            return (Style)System.Windows.Markup.XamlReader.Parse(xaml);
+            var bd = new FrameworkElementFactory(typeof(Chamfer), "bd");
+            bd.SetResourceReference(Chamfer.BackgroundProperty, K.Panel2);
+            bd.SetResourceReference(Chamfer.BorderBrushProperty, K.Line);
+            bd.SetValue(Chamfer.BorderThicknessProperty, 1.0);
+            bd.SetValue(Chamfer.CutProperty, 6.0);
+            bd.SetValue(Chamfer.CornersProperty, Cuts.BottomRight);
+            var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+            cp.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            cp.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            bd.AppendChild(cp);
+            var tpl = new ControlTemplate(typeof(ToggleButton)) { VisualTree = bd };
+            var over = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            over.Setters.Add(DynSetter(Chamfer.BorderBrushProperty, K.AccentLine, "bd"));
+            tpl.Triggers.Add(over);
+            var on = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
+            on.Setters.Add(DynSetter(Chamfer.BackgroundProperty, K.StartBg, "bd"));
+            on.Setters.Add(DynSetter(Chamfer.BorderBrushProperty, K.Accent, "bd"));
+            on.Setters.Add(DynSetter(Control.ForegroundProperty, K.OnAccent));
+            on.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.SemiBold));
+            tpl.Triggers.Add(on);
+            var s = new Style(typeof(ToggleButton));
+            s.Setters.Add(new Setter(FrameworkElement.CursorProperty, Cursors.Hand));
+            s.Setters.Add(DynSetter(Control.ForegroundProperty, K.Text));
+            s.Setters.Add(new Setter(Control.FontSizeProperty, 12.0));
+            s.Setters.Add(new Setter(Control.FontFamilyProperty, TechFont));
+            s.Setters.Add(new Setter(FrameworkElement.HeightProperty, 28.0));
+            s.Setters.Add(new Setter(UIElement.FocusableProperty, false));
+            s.Setters.Add(new Setter(Control.TemplateProperty, tpl));
+            return s;
         }
     }
 }

@@ -18,6 +18,9 @@ namespace VideoMixApp
             public bool HasAudio;
             // The "comment" metadata (moov/udta/meta/ilst/©cmt); 规格统一 writes its mark there.
             public string Comment;
+            // The "description" metadata (ilst/desc): since v2.7.0 a clip whose bitrate 规格统一 raised
+            // carries "AxeRate/1 <kbps>" there, the floor it was raised for.
+            public string Description;
             // First video track: bytes of all its samples, its length and frame count (0 when the
             // header holds no sample table, e.g. fragmented MP4). Bitrate and frame rate come from these.
             public long VideoBytes;
@@ -151,7 +154,8 @@ namespace VideoMixApp
                 }
                 else if (box.Type == "udta")
                 {
-                    info.Comment = ReadComment(b, box.Body, box.End);
+                    info.Comment = ReadTag(b, box.Body, box.End, "©cmt");
+                    info.Description = ReadTag(b, box.Body, box.End, "desc");
                 }
             }
             if (!info.HasVideo && !info.HasAudio) return null;
@@ -160,10 +164,10 @@ namespace VideoMixApp
             return info;
         }
 
-        // udta > meta (a full box: 4 bytes version/flags before its children) > ilst > ©cmt > data
+        // udta > meta (a full box: 4 bytes version/flags before its children) > ilst > item > data
         // (type and locale, 4 bytes each, then the UTF-8 text). That is where ffmpeg's
-        // "-metadata comment=" ends up in an MP4.
-        private static string ReadComment(byte[] b, int start, int end)
+        // "-metadata comment=" (item ©cmt) and "-metadata description=" (item desc) end up in an MP4.
+        private static string ReadTag(byte[] b, int start, int end, string tag)
         {
             foreach (var meta in Children(b, start, end))
             {
@@ -173,7 +177,7 @@ namespace VideoMixApp
                     if (ilst.Type != "ilst") continue;
                     foreach (var item in Children(b, ilst.Body, ilst.End))
                     {
-                        if (item.Type != "©cmt") continue;
+                        if (item.Type != tag) continue;
                         foreach (var data in Children(b, item.Body, item.End))
                         {
                             if (data.Type == "data" && data.Body + 8 <= data.End) return Encoding.UTF8.GetString(b, data.Body + 8, data.End - data.Body - 8);

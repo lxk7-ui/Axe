@@ -229,7 +229,7 @@ namespace VideoMixApp
                 using (var p = Process.Start(psi))
                 {
                     ChildProcesses.Add(p);
-                    try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+                    ChildProcesses.Background(p);
                     p.ErrorDataReceived += (s, e) => { };
                     p.BeginErrorReadLine();
                     var ms = new MemoryStream();

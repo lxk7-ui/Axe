@@ -100,6 +100,22 @@ namespace VideoMixApp
             return Math.Max(1, Math.Min(MaxJobs, Math.Min(byCpu, byMemory)));
         }
 
+        // CPU (libx264) encodes at once, whatever 并行进程 says (v2.8.3): every encode gets at least 2
+        // threads, so more than half the CPU threads in jobs only share the same CPU among more
+        // processes. Measured on the 16-thread laptop, 180 s videos with filter, sticker and subtitles:
+        // 6, 8 or 10 at once all take 19.5-19.8 s per video, but 10 need 1.8 GB against 1.4 GB for 8
+        // (_tools\v30\bench2.ps1), and that memory is what makes the PC sluggish. Stream-copy joins
+        // and GPU encodes are not limited by this.
+        public static int EncodeCap()
+        {
+            return EncodeCap(Threads);
+        }
+
+        internal static int EncodeCap(int threads)
+        {
+            return Math.Max(2, threads / 2);
+        }
+
         public static string Summary()
         {
             return string.Format(CultureInfo.InvariantCulture, "CPU {0} 线程 · 内存 {1:0} GB", Threads, TotalMemoryGb());
@@ -115,23 +131,24 @@ namespace VideoMixApp
             Width = 400;
             SizeToContent = SizeToContent.Height;
             var body = new StackPanel { Margin = new Thickness(22.0, 6.0, 22.0, 18.0) };
-            body.Children.Add(new TextBlock { Text = "这台电脑：" + DeviceCheck.Summary(), FontSize = 13.0, Foreground = SB(CTextMain) });
+            body.Children.Add(new TextBlock { Text = "这台电脑：" + DeviceCheck.Summary(), FontSize = 13.0 }.Fg(K.Text));
             var line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0.0, 12.0, 0.0, 0.0) };
-            line.Children.Add(new TextBlock { Text = "建议并行进程：", FontSize = 14.0, Foreground = SB(CTextMain), VerticalAlignment = VerticalAlignment.Bottom });
-            line.Children.Add(new TextBlock { Text = suggested.ToString(CultureInfo.InvariantCulture), FontSize = 20.0, FontWeight = FontWeights.Bold, Foreground = SB(CPrimaryDeep), VerticalAlignment = VerticalAlignment.Bottom });
-            line.Children.Add(new TextBlock { Text = "（现在是 " + current.ToString(CultureInfo.InvariantCulture) + "）", FontSize = 12.5, Foreground = SB(CTextSub), Margin = new Thickness(6.0, 0.0, 0.0, 3.0), VerticalAlignment = VerticalAlignment.Bottom });
+            line.Children.Add(new TextBlock { Text = "建议并行进程：", FontSize = 14.0, VerticalAlignment = VerticalAlignment.Bottom }.Fg(K.Text));
+            line.Children.Add(new TextBlock { Text = suggested.ToString(CultureInfo.InvariantCulture), FontSize = 24.0, FontFamily = TechFont, FontWeight = FontWeights.Bold, Margin = new Thickness(2.0, 0.0, 0.0, -2.0), VerticalAlignment = VerticalAlignment.Bottom }.Fg(K.Accent));
+            line.Children.Add(new TextBlock { Text = "（现在是 " + current.ToString(CultureInfo.InvariantCulture) + "）", FontSize = 12.5, Margin = new Thickness(6.0, 0.0, 0.0, 3.0), VerticalAlignment = VerticalAlignment.Bottom }.Fg(K.TextSub));
             body.Children.Add(line);
             if (nvidiaHint)
             {
-                body.Children.Add(new TextBlock { Text = "检测到 NVIDIA 显卡，建议勾选「硬件加速」", FontSize = 12.5, Foreground = SB(CTextSub), Margin = new Thickness(0.0, 8.0, 0.0, 0.0) });
+                body.Children.Add(new TextBlock { Text = "检测到 NVIDIA 显卡，建议勾选「硬件加速」", FontSize = 12.5, Margin = new Thickness(0.0, 8.0, 0.0, 0.0) }.Fg(K.TextSub));
             }
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0.0, 18.0, 0.0, 0.0) };
-            var use = new Button { Content = "用建议值", Width = 104, Height = 32, Margin = new Thickness(0.0, 0.0, 8.0, 0.0), Style = MainWindow.MakePrimaryButtonStyle(), FontSize = 13.0, Foreground = System.Windows.Media.Brushes.White };
+            // (v2.7.1: the main button on the right, as in Axe's other dialogs.)
+            var use = new Button { Content = "用建议值", Width = 104, Height = 32, Style = MainWindow.MakePrimaryButtonStyle(), FontSize = 13.0, FontWeight = FontWeights.SemiBold, IsDefault = true };
             use.Click += (s, e) => DialogResult = true;
-            var keep = new Button { Content = "保持现在", Width = 92, Height = 32, Style = MainWindow.MakeSecondaryButtonStyle(), FontSize = 13.0 };
+            var keep = new Button { Content = "保持现在", Width = 92, Height = 32, Margin = new Thickness(0.0, 0.0, 10.0, 0.0), Style = MainWindow.MakeSecondaryButtonStyle(), FontSize = 13.0, IsCancel = true };
             keep.Click += (s, e) => DialogResult = false;
-            buttons.Children.Add(use);
             buttons.Children.Add(keep);
+            buttons.Children.Add(use);
             body.Children.Add(buttons);
             DialogChrome.Apply(this, "设备检测", IconBolt, body, false);
         }

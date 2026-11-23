@@ -1,15 +1,22 @@
 param(
-    [string]$Version = "v2.6.0",
+    [string]$Version = "v2.8.3",
     # Folder of the previous release; ffmpeg, settings.json and the shortcut script are taken from it.
     [string]$BaseDir = (Join-Path (Split-Path $PSScriptRoot) "_axe_original\Axe"),
-    [switch]$NoZip
+    [switch]$NoZip,
+    # Package the existing bin\Axe.exe as it is (for effect-only updates, or when build.ps1 cannot run).
+    [switch]$NoBuild
 )
 # Assembles the portable "Axe" folder and zips it as Axe_<version>_精简版.zip next to this source folder.
 # The speech model for 识别语音配字幕 (about 228 MB) is not included: Axe downloads it on first use
 # into asr\model; everything else it needs (AxeAsr, sherpa-onnx, the voice detector) is.
 $ErrorActionPreference = "Stop"
 $outRoot = Split-Path $PSScriptRoot
-& (Join-Path $PSScriptRoot "build.ps1") | Out-Null
+if ($NoBuild) {
+    if (-not (Test-Path (Join-Path $PSScriptRoot "bin\Axe.exe")) -or -not (Test-Path (Join-Path $PSScriptRoot "bin\asr\AxeAsr.exe"))) { throw "-NoBuild needs bin\Axe.exe and bin\asr\AxeAsr.exe" }
+}
+else {
+    & (Join-Path $PSScriptRoot "build.ps1") | Out-Null
+}
 
 $stage = Join-Path $outRoot ("Axe_" + $Version)
 $app = Join-Path $stage "Axe"

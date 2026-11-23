@@ -4,7 +4,7 @@ namespace VideoMixApp
 {
     public static class AppInfo
     {
-        public const string Version = "v2.6.0";
+        public const string Version = "v2.8.3";
     }
 
     // The field names below are persisted in manifest.json / settings.json by
@@ -92,5 +92,41 @@ namespace VideoMixApp
         public int MinKbps;
         // The PC 设备检测 last ran on (v2.6.0, see DeviceCheck.Key); another PC is checked on first start.
         public string DeviceKey;
+        // 任务队列 (v2.7.0; absent in older settings files, which load as empty).
+        public List<QueueTask> Queue;
+        // 背景色 (v2.8.0, a Palette id; absent or unknown means the first scheme).
+        public string Theme;
+    }
+
+    // One 快拼 of the 任务队列 (v2.7.0): the main window's settings when it was added. Runs one after
+    // another; 并行进程 and 硬件加速 are taken from the window when the queue starts.
+    public class QueueTask
+    {
+        public string SourceRoot;
+        public string Category;
+        public string OutputRoot;
+        public string IntroFile;
+        public string NameFormat;
+        public int Width;
+        public int Height;
+        public int Count;
+        public double DurationSec;
+        public double ToleranceSec;
+        public string Filter;
+        public int FilterStrength;
+        public string Sticker;
+        public double Speed;
+        public bool Subtitles;
+        public double SubX;
+        public double SubY;
+        public double SubSize;
+        public double StickerX;
+        public double StickerY;
+        public double StickerSize;
+        // "" = waiting (also after it was stopped: its videos are removed), "running", "done", "failed".
+        public string State;
+        // Done: the batch folder and how many videos it holds. Failed: why (the last error logged).
+        public string Result;
+        public int Made;
     }
 }

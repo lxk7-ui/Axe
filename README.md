@@ -15,24 +15,28 @@
 先把素材统一成相同规格，之后的拼接就是无损 copy，不重新编码，10 条 3 分钟的成片几秒钟出完。
 Windows 绿色软件：解压即用，不安装、不写注册表，整个文件夹可以拷到别的电脑。
 
-当前版本 **v2.6.0**，各版本的变化见 [更新记录](CHANGELOG.md)。
+当前版本 **v2.8.3**，各版本的变化见 [更新记录](CHANGELOG.md)。
 
 ## 功能
 
 - **两步出片**：第一步「规格统一」把每个素材整体转成相同规格（默认 720x1280、30fps、H.264/AAC），不切段、不裁剪；第二步「快拼」从统一好的素材里随机抽取，无损直接拼接。
 - **成片去重（跨天、跨批次）**：对每条成片的素材顺序计算指纹并持久保存，今天、明天乃至以后生成的成片，都不会和历史上任何一条出现完全相同的组合。
 - **成片规格**：5 种比例（9:16、16:9、1:1、3:4、4:3，只缩放补边、不裁剪）；目标时长 ± 浮动秒数；可选固定片头；成片命名支持 `{产品}` `{日期}` `{序号}` `{批次}` `{时长}` 变量。
-- **成片效果，所见即所得**：12 种滤镜（可调强度）、41 个动态贴纸、1x～4x 变速（声音音调不变）；右侧实时预览，贴纸和字幕直接在预览里拖动、滚轮调大小。
+- **成片效果，所见即所得**：27 种滤镜（可调强度）、207 个动态贴纸（促销文字、3D 表情、手势）、1x～4x 变速（声音音调不变）；右侧实时预览，贴纸和字幕直接在预览里拖动、滚轮调大小。
+- **素材规则**：每个素材可设「开头不用」「成片不用」，规则存在素材文件夹里，跟着素材走；生成报告列出每条成片的素材顺序和时间点。
+- **任务队列**：多个产品排队，一个做完自动开始下一个；停止时只删正在做的那一批。
+- **组合统计**：显示已用组合、剩余组合、总组合，剩下的组合不多时直接挑出没用过的。
 - **识别语音配字幕**：在本机识别素材里的人声（SenseVoice + sherpa-onnx，不上传任何内容），按说话时间把字幕烧录进成片。
-- **码率保障**：成片视频码率不够 1000 kbps 的自动重新编码到约 1350 kbps，避免投放平台提示「视频码率不小于1000kbps」；够的照常无损拼接。
+- **码率保障**：码率不够 1000 kbps 的素材在规格统一时一次提高好，之后照常无损拼接，避免投放平台提示「视频码率不小于1000kbps」；加效果的成片按需要的码率编码。
 - **硬件加速**：NVIDIA / Intel 核显 / AMD 显卡编码，显卡与 CPU 同时分担；某个素材显卡编码失败自动改用 CPU 重做。
-- **设备检测**：每台电脑第一次打开时按 CPU 线程数和内存建议「并行进程」；内存不够时自动少开，不把电脑拖卡。
+- **设备检测，出片不卡电脑**：每台电脑第一次打开时按 CPU 线程数和内存建议「并行进程」；同时编码的条数和每个进程的线程按 CPU 分配，编码进程低优先级、低内存优先级，内存不够时自动少开。
 - **规格统一记录**：素材目录下方直接显示哪些视频已统一、哪些没有；统一好的视频自带标记，拷到别的电脑不用重做；只处理新增或改动过的素材。
+- **6 种背景色**：科技棱角风界面，标题栏一键切换配色。
 - **稳**：随时可停止且不留残余；某个视频卡住或时间戳损坏时自动换兼容模式重做，不拖累其他视频；磁盘空间预检；设置文件先写临时文件再替换；运行日志落盘。
 
 ## 下载
 
-到 [Releases](https://github.com/lxk7-ui/Axe/releases) 下载 `Axe-v2.6.0-win64.zip`（约 152MB），完整解压后双击 `Axe` 文件夹里的 `Axe.exe`。
+到 [Releases](https://github.com/lxk7-ui/Axe/releases) 下载 `Axe-v2.8.3-win64.zip`（约 217MB），完整解压后双击 `Axe` 文件夹里的 `Axe.exe`。
 
 - **系统要求**：64 位 Windows 10 / 11。用到的 .NET Framework 是系统自带的，不需要另装任何东西。
 - 压缩包里已带 FFmpeg 和语音识别运行库；「识别语音配字幕」的模型（约 228MB）第一次勾选时联网下载一次。
@@ -68,7 +72,7 @@ Axe 把「转码」这件慢的事只对每个素材做一次，结果直接替�
 
 ## 从源码构建
 
-需要 Windows 10/11 x64、[.NET SDK](https://dotnet.microsoft.com/download)（用它自带的 Roslyn 编译器，任意较新版本）和 .NET Framework 4.7.1 引用程序集（装了 Visual Studio 或 .NET Framework 4.7.1 Developer Pack 就有）。不需要 NuGet 包，也不需要打开 Visual Studio。
+需要 Windows 10/11 x64、[.NET SDK](https://dotnet.microsoft.com/download)（用它自带的 Roslyn 编译器，任意较新版本）和 .NET Framework 4.7.1 引用程序集：`build.ps1` 先找源码旁的 `refs\v4.7.1\`（NuGet 包 [Microsoft.NETFramework.ReferenceAssemblies.net471](https://www.nuget.org/packages/Microsoft.NETFramework.ReferenceAssemblies.net471) 1.0.3 里 `build\.NETFramework\v4.7.1` 的内容，不入库），没有再用系统里的（装了 Visual Studio 或 .NET Framework 4.7.1 Developer Pack 就有）。不需要 NuGet 包，也不需要打开 Visual Studio。
 
 ```powershell
 git clone https://github.com/lxk7-ui/Axe.git
@@ -81,7 +85,7 @@ pwsh build.ps1          # 生成 bin\Axe.exe 和 bin\asr\AxeAsr.exe
 打包成发布用的压缩包：
 
 ```powershell
-pwsh package.ps1 -Version v2.6.0 -BaseDir <解压后的上一版 Axe 文件夹>
+pwsh package.ps1 -Version v2.8.3 -BaseDir <解压后的上一版 Axe 文件夹>
 ```
 
 `package.ps1` 从 `-BaseDir` 取 FFmpeg 和桌面快捷方式脚本，从 `vendor\asr\` 取语音识别运行库（不在仓库里，获取方法见 [vendor/asr/README.md](vendor/asr/README.md)），在源码文件夹旁边生成 `Axe_<版本>\` 和 `Axe_<版本>_精简版.zip`。
@@ -94,11 +98,14 @@ src/            程序源码（C#，WPF 界面全部用代码搭建）
   MixEngine*.cs       引擎：规格统一（Unify）、快拼（Mix）、语音识别调度（Asr）
   Effects*.cs / Lut.cs / PreviewRenderer.cs   成片效果、调色文件处理、实时预览
   FolderPicker.cs     可搜索的文件夹选择窗口
+  ClipRules*.cs / Combos.cs / QueuePanel.cs   素材规则、组合统计与历史去重、任务队列
+  Theme.cs / Chamfer.cs / DialogChrome.cs / MessageDialog.cs   配色与切角界面组件
   HwEncoder.cs / MediaProbe.cs / DeviceCheck.cs   显卡编码探测、视频信息读取、设备检测
 asr/            AxeAsr：识别语音配字幕的辅助程序（64 位控制台程序，调用 sherpa-onnx）
 package/        随发布包分发的文件：使用说明、成片效果素材（effects：滤镜、贴纸）
 vendor/asr/     语音识别运行库的许可文件和获取说明（运行库本身不入库）
 build.ps1       编译脚本
+make-icon.ps1   生成程序图标 Axe.ico
 package.ps1     打包脚本
 ```
 
@@ -112,9 +119,11 @@ package.ps1     打包脚本
 | [SenseVoice](https://github.com/FunAudioLLM/SenseVoice)（sherpa-onnx 转换的 int8 模型） | 见 [LICENSE-SenseVoice.txt](vendor/asr/LICENSE-SenseVoice.txt) | 语音识别模型，首次使用时下载 |
 | [Silero VAD](https://github.com/snakers4/silero-vad) | MIT | 人声检测 |
 | [Derby film looks](https://github.com/joinfiber/derby-film)、[Lightframes](https://github.com/joancomadran/lightframes) | MIT | 滤镜 01～07 |
+| [LUMIX Original Looks](https://github.com/t0saki/lumix-original-looks)、[Striped Purple color grading LUTs](https://github.com/stripedpurple/color-grading-luts) | MIT | 滤镜 13～27 |
 | [slay LUTs](https://github.com/slaycamera/luts)、[GlassMeter film looks](https://github.com/TrondW/glassmeter-film-looks) | CC BY 4.0 | 滤镜 08～12 |
-| [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) / [Fluent Emoji Animated](https://github.com/microsoft/fluentui-emoji-animated) | MIT | 动态图标贴纸 |
-| [得意黑 Smiley Sans](https://github.com/atelier-anchor/smiley-sans) | SIL OFL 1.1 | 促销文字贴纸的字体 |
+| [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) / [Fluent Emoji Animated](https://github.com/microsoft/fluentui-emoji-animated) | MIT | 3D 动态表情贴纸 |
+| [Noto Animated Emoji](https://googlefonts.github.io/noto-emoji-files/)（Animated Noto Emoji by Google） | CC BY 4.0 | 手势、表情贴纸 |
+| [得意黑 Smiley Sans](https://github.com/atelier-anchor/smiley-sans)、站酷快乐体、站酷庆科黄油体（[Google Fonts](https://github.com/google/fonts)） | SIL OFL 1.1 | 促销文字贴纸的字体 |
 
 促销文字贴纸（限时特惠、爆款推荐等）为本项目绘制。各素材的具体对应关系见 [版权说明](package/effects/版权说明.txt)。
 

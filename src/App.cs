@@ -7,8 +7,8 @@ using System.Windows;
 [assembly: AssemblyTitle("Axe")]
 [assembly: AssemblyProduct("Axe 视频混剪工具")]
 [assembly: AssemblyDescription("Axe 视频混剪工具")]
-[assembly: AssemblyVersion("2.6.0.0")]
-[assembly: AssemblyFileVersion("2.6.0.0")]
+[assembly: AssemblyVersion("2.8.3.0")]
+[assembly: AssemblyFileVersion("2.8.3.0")]
 
 namespace VideoMixApp
 {

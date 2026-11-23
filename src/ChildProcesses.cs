@@ -56,6 +56,43 @@ namespace VideoMixApp
         [DllImport("kernel32.dll")]
         private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MemoryPriorityInformation
+        {
+            public uint MemoryPriority;
+        }
+
+        private const int ProcessMemoryPriority = 0;
+        private const uint MemoryPriorityLow = 2;
+
+        // Windows 8 and later; on Windows 7 the entry point is missing and the call is skipped.
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetProcessInformation(IntPtr process, int infoClass, ref MemoryPriorityInformation info, int size);
+
+        private static bool _noMemoryPriority;
+
+        // An encoder (or the speech recognizer) should leave the PC usable: below-normal CPU priority
+        // (it still gets all idle CPU), and since v2.8.3 low memory priority, so when memory runs short
+        // Windows takes pages from it before it takes them from the programs the user is working in.
+        public static void Background(Process p)
+        {
+            try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+            if (_noMemoryPriority) return;
+            try
+            {
+                var info = new MemoryPriorityInformation { MemoryPriority = MemoryPriorityLow };
+                SetProcessInformation(p.Handle, ProcessMemoryPriority, ref info, Marshal.SizeOf(typeof(MemoryPriorityInformation)));
+            }
+            catch (EntryPointNotFoundException)
+            {
+                _noMemoryPriority = true;
+            }
+            catch
+            {
+                // The process may already have ended; nothing to do.
+            }
+        }
+
         private static readonly object Gate = new object();
         private static IntPtr _job;
         private static bool _failed;
